@@ -417,19 +417,19 @@ vec3 rotate(vec3 p, vec3 a) {
     return p;
 }
 
-vec4 suni(vec4 d1, vec4 d2, float k = 1.0/64.0) {
+vec4 suni(vec4 d1, vec4 d2, float k) {
 	k = max(k, 1.0/64.0);
     float h = clamp(0.5 + 0.5 * (d2.a - d1.a) / k, 0.0, 1.0);
     return mix(d2, d1, h) - vec2(0.0, k * h * (1.0 - h)).xxxy;
 }
 
-vec4 ssub(vec4 d1, vec4 d2, float k = 1.0/64.0) {
+vec4 ssub(vec4 d1, vec4 d2, float k) {
 	k = max(k, 1.0/64.0);
     float h = clamp(0.5 - 0.5 * (d1.a + d2.a) / k, 0.0, 1.0);
     return mix(d1, vec4(d2.rgb, -d2.a), h) + vec2(0.0, k * h * (1.0 - h)).xxxy;
 }
 
-vec4 sint(vec4 d1, vec4 d2, float k = 1.0/64.0) {
+vec4 sint(vec4 d1, vec4 d2, float k) {
 	k = max(k, 1.0/64.0);
     float h = clamp(0.5 - 0.5 * (d2.a - d1.a) / k, 0.0, 1.0);
     return mix(d2, d1, h) + vec2(0.0, k * h * (1.0 - h)).xxxy;
