@@ -8,10 +8,13 @@ let radiusSlider;
 let btnSave, btnClear;
 let chkColor;
 
+let paletteImg = null;
+
 let newStroke = true;
 
 function setup() {
-  createCanvas(windowWidth, windowHeight);
+  let canvas = createCanvas(windowWidth, windowHeight);
+  canvas.drop(handleFile);
 
   pg = createGraphics(2048, 2048);
 
@@ -62,10 +65,10 @@ function setup() {
 function draw() {
   drawCheckerboard();
 
-  let sz = min(width / pg.width, height / pg.height);
+  let scale = min(width / pg.width, height / pg.height);
 
-  view.w = pg.width * sz;
-  view.h = pg.height * sz;
+  view.w = pg.width * scale;
+  view.h = pg.height * scale;
   view.x = (width - view.w) * 0.5;
   view.y = (height - view.h) * 0.5;
 
@@ -96,10 +99,6 @@ function draw() {
   rect(0, view.y + view.h, width, height);
   rect(0, view.y, view.x, view.h);
   rect(view.x + view.w, view.y, width, view.h);
-
-  fill(255);
-  noStroke();
-  textSize(12);
 }
 
 function drawCheckerboard() {
@@ -113,6 +112,15 @@ function drawCheckerboard() {
       noStroke();
       rect(x, y, size, size);
     }
+  }
+}
+
+function handleFile(file) {
+  if (file.type === 'image') {
+    loadImage(file.data, img => {
+      paletteImg = img;
+      paletteImg.loadPixels();
+    });
   }
 }
 
@@ -131,6 +139,10 @@ function mousePressed() {
 
 function touchStarted() {
   newStroke = true;
+  return false;
+}
+
+function touchMoved() {
   return false;
 }
 
@@ -170,20 +182,34 @@ function mouseDragged() {
 }
 
 function addPoint(x, y) {
-  let seed = x * 0.01 + y * 0.01;
+  let col;
 
-  let col = color(
-    noise(seed, 0) * 255,
-    noise(seed, 100) * 255,
-    noise(seed, 200) * 255,
-    140
-  );
+  if (paletteImg) {
+    let rx = floor(random(paletteImg.width));
+    let ry = floor(random(paletteImg.height));
 
-  let r = noise(seed, 300) * 10 + 4;
+    let idx = 4 * (ry * paletteImg.width + rx);
+
+    let r = paletteImg.pixels[idx];
+    let g = paletteImg.pixels[idx + 1];
+    let b = paletteImg.pixels[idx + 2];
+
+    col = color(r, g, b, 140);
+  } else {
+    let seed = x * 0.01 + y * 0.01;
+    col = color(
+      noise(seed, 0) * 255,
+      noise(seed, 100) * 255,
+      noise(seed, 200) * 255,
+      140
+    );
+  }
+
+  let r = noise(x * 0.01, y * 0.01) * 10 + 4;
 
   points.push({ x, y, col, r });
 
-  if (points.length > 2000) points.shift();
+  if (points.length > 600) points.shift();
 }
 
 function windowResized() {
