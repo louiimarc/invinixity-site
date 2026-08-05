@@ -1,8 +1,33 @@
 function preload() {
-  data.amount = 3 + (demo ? 0 : 2) + svgGlyphCharacters().length;
+  data.amount =
+    6 +
+    backgroundEntityTexturePaths().length +
+    textTextureCornerPaths().length +
+    (demo ? 0 : 2) +
+    svgGlyphCharacters().length;
   scene.font = loadFont("assets/font/Nunito-Bold.ttf", loaded);
   scene.text.font = loadFont("assets/font/Humanize.ttf", loaded);
   scene.shader = loadShader("shader/vert.glsl", "shader/frag.glsl", loaded);
+  scene.grainShader = loadShader(
+    "shader/vert.glsl",
+    "shader/grain.glsl",
+    loaded,
+  );
+  scene.backgroundEntityShader = loadShader(
+    "shader/vert.glsl",
+    "shader/background_entity.glsl",
+    loaded,
+  );
+  preloadBackgroundEntityTextures();
+  preloadTextTextureAssets();
+  inout.audio.cameraShutter = loadSound(
+    "assets/sound/Camera 3.m4a",
+    loaded,
+    (error) => {
+      console.warn("Unable to load camera shutter sound", error);
+      loaded();
+    },
+  );
   if (!demo) {
     scene.panelShader = loadShader(
       "shader/vert.glsl",
@@ -26,6 +51,9 @@ function setup() {
   updateUiScale();
   setupTextInput();
   loadTextMemory();
+  data.amount++;
+  data.loading.status = true;
+  restoreSessionCache().finally(loaded);
   data.loading.startedAt = millis() / 1000.0;
   data.loading.position.y = -height;
 
@@ -38,12 +66,62 @@ function setup() {
   scene.workspace.smooth();
   scene.workspace.angleMode(DEGREES);
   scene.workspace.textFont(scene.text.font);
+  createGrainFinishTexture();
+  setupBackgroundEntities();
+  setupTextTextureAssets();
 
   scene.gui = {
-    save: new GraphicalUserInterface("Save", scene.workspace, scene.shader),
+    print: new GraphicalUserInterface("Finish", scene.workspace, scene.shader),
     edit: new GraphicalUserInterface("Edit", scene.workspace, scene.shader),
     done: new GraphicalUserInterface("Done", scene.workspace, scene.shader),
-    contentScale: new GraphicalUserInterface("", scene.workspace, scene.shader),
+    texturePanel: new GraphicalUserInterface("", scene.workspace, scene.shader),
+    layerPanel: new GraphicalUserInterface("", scene.workspace, scene.shader),
+    printTitle: new GraphicalUserInterface(
+      "Card Preview",
+      scene.workspace,
+      scene.shader,
+    ),
+    printCancel: new GraphicalUserInterface(
+      "Cancel",
+      scene.workspace,
+      scene.shader,
+    ),
+    printOk: new GraphicalUserInterface("Finish", scene.workspace, scene.shader),
+    cameraTitle: new GraphicalUserInterface(
+      "Take a Picture",
+      scene.workspace,
+      scene.shader,
+    ),
+    cameraTake: new GraphicalUserInterface(
+      "Take",
+      scene.workspace,
+      scene.shader,
+    ),
+    cameraNext: new GraphicalUserInterface(
+      "Next",
+      scene.workspace,
+      scene.shader,
+    ),
+    cameraCancel: new GraphicalUserInterface(
+      "Cancel",
+      scene.workspace,
+      scene.shader,
+    ),
+    frameTitle: new GraphicalUserInterface(
+      "Draw Your Frame",
+      scene.workspace,
+      scene.shader,
+    ),
+    frameNext: new GraphicalUserInterface(
+      "Next",
+      scene.workspace,
+      scene.shader,
+    ),
+    frameRedraw: new GraphicalUserInterface(
+      "Redraw",
+      scene.workspace,
+      scene.shader,
+    ),
   };
   if (demo) {
     scene.gui.hue = new GraphicalUserInterface(
@@ -83,11 +161,21 @@ function setup() {
       scene.shader,
     );
   }
-  scene.gui.save.anchor = "left";
+  scene.gui.print.anchor = "left";
   scene.gui.edit.anchor = "right";
   scene.gui.done.anchor = "right";
-  scene.gui.contentScale.marks.top = "+";
-  scene.gui.contentScale.marks.bottom = "-";
+  scene.gui.texturePanel.tiltEnabled = false;
+  scene.gui.layerPanel.tiltEnabled = false;
+  scene.gui.printTitle.tiltEnabled = false;
+  scene.gui.printCancel.anchor = "right";
+  scene.gui.printOk.anchor = "left";
+  scene.gui.cameraTitle.tiltEnabled = false;
+  scene.gui.cameraTake.tiltEnabled = false;
+  scene.gui.cameraNext.tiltEnabled = false;
+  scene.gui.cameraCancel.tiltEnabled = false;
+  scene.gui.frameTitle.tiltEnabled = false;
+  scene.gui.frameNext.tiltEnabled = false;
+  scene.gui.frameRedraw.tiltEnabled = false;
   if (demo) {
     scene.gui.hue.anchor = "left";
     scene.gui.saturation.anchor = "left";

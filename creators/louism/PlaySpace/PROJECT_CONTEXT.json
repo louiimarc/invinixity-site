@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "lastUpdated": "2026-08-04",
+  "project": {
+    "name": "PlaySpace",
+    "repository": "louiimarc/invinixity-site",
+    "path": "creators/louism/PlaySpace",
+    "publicUrl": "https://invinixity.com/creators/louism/PlaySpace/"
+  },
+  "goal": "Build a playful, touch-first creative kiosk where visitors create and finish a layered digital paper card.",
+  "audience": [
+    "Public installation visitors",
+    "Uniform iPad or tablet deployments",
+    "Desktop development and demonstrations"
+  ],
+  "experiencePrinciples": [
+    "Keep the interface direct, playful, and understandable without hidden keyboard shortcuts.",
+    "Use the existing liquid-glass shader consistently for controls and panels.",
+    "Commit buttons on pointer release; dragging outside cancels the action.",
+    "Treat touch as a primary input and prevent accidental taps from becoming paths.",
+    "Prefer simple local variables and direct calls until an abstraction removes real complexity."
+  ],
+  "architecture": {
+    "runtime": "Browser globals with p5.js 1.11.13, p5.sound, WebGL, and GLSL",
+    "entry": "index.html",
+    "state": "scene, data, and inout globals in js/common_custom.js",
+    "renderLoop": "js/main_graphic.js",
+    "input": "js/basic_inputs.js",
+    "gui": "js/gui_elements.js",
+    "colorPanel": "js/color_panel.js",
+    "texturePad": "js/texture_pad.js",
+    "layerBar": "js/layer_bar.js",
+    "sessionCache": "js/session_cache.js",
+    "sound": "js/sound_engine.js",
+    "cardPreview": "js/print_preview.js",
+    "cameraSession": "js/camera_session.js",
+    "faceDetection": "js/face_detection.js",
+    "photoFrame": "js/photo_frame.js",
+    "backgroundColor": "js/background_color.js",
+    "shaders": "shader/",
+    "glyphs": "assets/font/Humanize-SVG/"
+  },
+  "importantState": {
+    "layerDepths": {
+      "background": 0,
+      "content": 256,
+      "ui": 512
+    },
+    "textLimit": "24 non-space characters; repeated whitespace is collapsed",
+    "persistence": "Text, word paths, colors, sizes, background color, background-entity placement seed, edit state, per-word texture-pad coordinates, and photo/word Z order use localStorage key playspace.text.v1; the captured photo and freehand frame use IndexedDB database playspace-session-v1 so an unfinished composition restores after reload; successful Card Preview Finish clears both stores",
+    "wordIdentity": "Paths, colors, sizes, and texture coordinates are dictionary-based using occurrence-aware word keys"
+  },
+  "implemented": [
+    "Hidden native textarea with custom glass text field and selection UI",
+    "Per-word path drawing, color, size, SVG glyph rendering, and animated edges",
+    "Touch and mouse controls with smoothing, release-to-commit, and cancellation",
+    "Liquid-glass color wheel, RGB controls, UI sound engine, and responsive sizing",
+    "Asset loading progress transforms in place into the centered idle Start control; after later completed sessions Start rises back from below",
+    "The idle snake animation has been removed; during active editing, a trio of mixed-media entities from assets/texture/entity_experiments becomes digital-card background decoration behind the photo and text: two dominant edge-cut forms plus a deliberately smaller counterweight. Their session-persistent anchors are distributed at equal thirds around an elliptical perimeter so they occupy the available space evenly. Background hue directly rotates the balanced trio through a full orbit, while saturation and brightness dislocate each entity along its own deterministic pair of spatial axes; position, rotation, and subtle scale changes remain smoothly eased. The three slots use distinct palettes selected from analogous or complementary hue relationships, with greyscale and brightness-aware contrast handling for low-saturation or dark backgrounds; their lightweight shader softly suppresses pale paper and sharp highlights, embeds the remaining pigment into the live background color, and lowers opacity so the marks feel drawn into the card rather than pasted on top. The result inherits the paper grain and appears on the Card Preview base plane, and loaded working copies are reduced to 512px while source files remain untouched",
+    "Start opens a dimmed front camera UI with a mirrored live preview and rounded frame; Take and Cancel emerge from behind the preview and reverse behind it on exit, with camera-stream cleanup when the prompt closes",
+    "Camera startup uses iPad-friendly ideal front-camera constraints with a plain-video fallback, requires a secure HTTPS context, includes playsinline and webkit-playsinline playback hints, and reports actionable permission, installed-app, missing-camera, or busy-camera errors",
+    "Successful camera capture plays assets/sound/Camera 3.m4a and flashes the screen behind the frozen rounded viewfinder",
+    "After capture, the frozen viewfinder remains open with vertically stacked Next, Retake, and Cancel controls; Retake is red and immediately runs another countdown, while only the green Next control accepts the photo before editing, removes the underlying idle Start control, and confirms through one continuous downward card sweep that hides each stationary button before it stops rendering",
+    "After accepting a photo, visitors draw a freehand frame before editing; unfinished releases preserve the path for continuation, returning within a 64px start-point radius force-closes it with a lightly jittered connector, the bottom guide jumps word-by-word in a traveling sine wave, and a review step offers green Next or red Redraw glass controls",
+    "Closed photo frames remain fully freehand: the path receives one mild smoothing pass with no template recognition, predetermined shapes, or magnetic pull",
+    "Each captured portrait is checked locally in the browser with MediaPipe Face Detector; only overlapping portions of the visitor's frame are minimally pushed outside the inner 75% of the detected face so the outer 25% may still be crossed, the correction animates without blocking drawing, and the photo clipping remains stable",
+    "The freehand frame combines a smooth organic outline with an independently seeded triadic accent snapped to a 16px grid; both follow the same underlying path with a cohesive jelly animation built from two broad traveling lobes, five restrained detail lobes, slow whole-shape breathing, and slight tangential sway, producing prominent but non-chaotic motion while the accent retains rounded joins and occasional diagonal connections",
+    "Semantic green actions use RGB (125, 150, 100), while semantic red actions use RGB (255, 100, 125), converted to equivalent HSV values for the glass UI shader",
+    "The completed frame's bounding box defines its smallest enclosing square; the captured portrait cover-fits that square without changing aspect ratio, then clips to the hand-drawn loop",
+    "Frame confirmation skips a separate background stage and immediately enters text editing, focuses the hidden input, and invokes the iPad keyboard; the left glass color panel is titled Background and edits the 20%-gray default live, while the frame changes from drawing white to the selected background's RGB complement",
+    "A non-collapsing glass Texture panel stays anchored at the bottom-right during editing, opposite the Background wheel; one seamless glass shader pass renders the right-aligned header, margins, and an inset CMYG XY field with an 80%-white backing rather than overlapping a second glass control, and the inner corner radius is derived from the outer radius minus its margin for concentric curves; an exterior curved Vision Pro-style handle follows the panel's top-left corner radius and continuously enlarges the pad toward the canvas center up to 1.5x for precise positioning, while the 6px-scale dot grid animates up to 3x around the live or saved XY position. Each word's saved XY value bilinearly mixes four approved text textures—blue/purple at top-left, pastel at top-right, neon green/yellow at bottom-left, and greyscale at bottom-right—and clips the result inside every animated SVG glyph using a stable per-character crop. A broad diagonal gloss is clipped inside the rendered texture only, while one independently seeded, slightly enlarged white SVG backing creates the animated torn-paper fringe behind each glyph for legibility; the CMYG placeholder remains only for the corresponding caret and selection gradient",
+    "A vertically centered Instagram Stories-style layer stack overlays the right side of the Texture panel in its own glass backing, with the panel and every pill right-aligned to the Texture pad's window-side inset; the visual stack runs frontmost at the top to backmost at the bottom, the glass backing grows equally upward and downward as layers are added and widens only leftward to follow the currently longest pill, all pills return to one short width when empty canvas is tapped, and tapping the topmost visible canvas item expands only its pill's left edge before it can be dragged vertically to change its plain Z position; canvas text, the custom text bar, the Texture pad, and the layer pill share one bidirectional word selection: tapping a word replaces the current caret with an explicit selection of that exact word, moves the stored caret to its end, and arms its path for redrawing while keeping the native textarea blurred so iPadOS does not summon the keyboard, while tapping or moving the caret in the text bar selects the matching word layer and restores normal native caret interaction; selecting the photo, background, or no word disarms text-path editing and clears the word layer selection; one pill represents the framed photo plus one per word, the photo begins at the back, new words append at the front, ordering persists across reloads, and the former fixed plus/minus text-size slider is removed pending a direct text-resize interaction",
+    "Take Picture runs a three-second 3-2-1 countdown with matching full-opacity numerals centered in the side gutters between the viewfinder and window edges, sized to 25% of the shorter window dimension, plus rising synthesized notes; the scale is configurable as major, harmonic, or harmonicMinor in scene.session.camera.countdown.scale",
+    "Captured photos fill their visitor-drawn frame on the creative canvas and become their own sticker layer in Card Preview; Cancel, Escape, or a background tap returns to editing without clearing, while successful Finish ends the session and returns to idle Start",
+    "A new session starts empty unless an unfinished localStorage and IndexedDB session is restored after refresh; the photo, frame, text, background, size, colors, and texture coordinates survive reload, while successful digital-card confirmation is the finish boundary",
+    "A deterministic 64px monochrome grain tile is generated once per load and composited by one lightweight GPU pass over the completed workspace at 5% opacity; blended 3.5px fine and broad samples create larger, softer paper-like speckling, shader UVs drift the fixed tile by less than a pixel per second without regenerating or uploading noise, and the same finish is baked into the Card Preview base plane while leaving glass controls clean",
+    "Centered perspective Card Preview enters from below with a smooth one-turn presentation spin and remains draggable with inertial orbit at 25% viewport scale. The background and entities form the digital-paper base; the framed photo and every ordered word are captured as transparent sticker planes with soft silhouette shadows and an approximately 8px depth gap, compressed only when needed to keep a large stack within 64px total depth. Rotation reveals the resulting parallax while the 2% white frame, preview-only Humanize PlaySpace back mark, WebGL lighting, animated glass controls, and dimmed main UI remain",
+    "During editing, Finish slides offscreen and is inactive while the text field expands left; Done collapses the field into Edit and returns Finish",
+    "Developer alignment guides toggle with Shift+/ (?) and follow the pointer with red horizontal and vertical lines"
+  ],
+  "nextPriorities": [
+    "Design a start-to-finish public kiosk session with reset and inactivity timeout",
+    "Validate the layered digital-card finish and memory use on iPadOS",
+    "Continue performance profiling on tablet hardware as assets and effects increase"
+  ],
+  "continuationInstructions": [
+    "Work from the repository root, then modify only creators/louism/PlaySpace unless explicitly requested otherwise.",
+    "Run git status and inspect existing diffs before editing; never discard uncommitted user work.",
+    "Keep the current global p5 architecture unless a requested change clearly justifies refactoring.",
+    "Test visual changes at desktop, iPad portrait, and a narrow mobile viewport.",
+    "Do not commit or push until the user requests it."
+  ],
+  "development": {
+    "command": "npm exec vite -- --host 127.0.0.1",
+    "notes": "There are no automated tests or npm scripts. Validate rendering, console output, touch/mouse interaction, audio startup, Loading-to-Start, camera permission/live capture/cancel, editing, and the perspective Card Preview manually."
+  },
+  "worktreeAtLastUpdate": {
+    "baseCommit": "43db6f4",
+    "status": "Uncommitted local changes include the Loading-to-Start session flow, camera capture, and print-preview implementation. Inspect git diff for the authoritative current state."
+  }
+}

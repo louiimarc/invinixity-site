@@ -50,19 +50,20 @@ function draw() {
   background(0);
   let canvasGl = _renderer.GL;
   canvasGl.clear(canvasGl.DEPTH_BUFFER_BIT);
-  ortho();
+  ortho(-width/2, width/2, -height/2, height/2, -min(width, height));
   let workspaceGl = scene.workspace._renderer.GL;
   workspaceGl.clear(workspaceGl.DEPTH_BUFFER_BIT);
   scene.workspace.ortho();
 
-  scene.workspace.push();
-  scene.workspace.imageMode(CENTER);
-  scene.workspace.image(checkerboardBuffer(), 0, 0, width, height);
-  scene.workspace.pop();
+  drawSessionWorkspaceBackground();
 
   scene.elapsedTime = millis() / 1000.0;
   inout.audio.update();
   inout.audio.ui?.update();
+  drawBackgroundEntities(scene.workspace);
+  let previewBaseSnapshot = scene.ui.printPreview.pending
+    ? scene.workspace.get()
+    : null;
 
   // scene.shader.setUniform("spectrum", inout.audio.spectrum.texture);
   // scene.shader.setUniform("texture0", scene.workspace);
@@ -76,40 +77,42 @@ function draw() {
   scene.workspace.textAlign(CENTER, CENTER);
 
   if (data.loading.ready) {
-    let words = textWords();
-    for (let pathIndex = 0; pathIndex < words.length; pathIndex++) {
-      let path = textPathForWordIndex(pathIndex);
-      if (path == null) continue;
-      let textSizeValue = textSizeForWordIndex(pathIndex, baseTextSize);
-      drawWordOnTextPath(
-        words[pathIndex],
-        path,
-        textSizeValue,
-        pathIndex,
-      );
-    }
+    drawLayeredWorkspaceContent(baseTextSize);
+    drawGrainFinish(scene.workspace);
   }
 
   imageMode(CENTER);
   image(scene.workspace, 0, 0, width, height);
+  capturePrintPreview(previewBaseSnapshot);
+  let previewModelView = scene.ui.printPreview.open
+    ? _renderer.uMVMatrix.mat4.slice()
+    : null;
+  let previewProjection = scene.ui.printPreview.open
+    ? _renderer.uPMatrix.mat4.slice()
+    : null;
 
   // orbitControl();
+  push();
   translate(0, 0, scene.layer.ui);
 
-  push();
   data.loading.bar();
 
   noStroke();
 
-  let saveButton = uiButtonBounds("left");
-  let textScaleSlider = uiVerticalSliderBounds("right");
+  let printButton = uiButtonBounds("left");
+  scene.ui.textField.position = animateData(
+    scene.ui.textField.position,
+    scene.text.edit ? 1 : 0,
+    0.25,
+  );
+  let editTransition = scene.ui.textField.position;
   scene.ui.controls.position = animateData(
     scene.ui.controls.position,
-    data.loading.ready ? 1 : 0,
+    data.loading.ready && scene.session.mode == "active" ? 1 : 0,
     0.125,
   );
   let controlsHiddenOffset = -(
-    saveButton.h +
+    printButton.h +
     scene.ui.button.padding * scene.ui.scale * 2
   );
   let controlsOffset = map(
@@ -119,71 +122,42 @@ function draw() {
     controlsHiddenOffset,
     0,
   );
-  saveButton.y += controlsOffset;
-  let textScaleSliderVisibleX = textScaleSlider.x;
-  let textScaleSliderHiddenX =
-    width / 2 + textScaleSlider.w + scene.ui.button.padding * scene.ui.scale;
-  scene.ui.sizePanel.position = animateData(
-    scene.ui.sizePanel.position,
-    scene.text.edit && data.loading.ready ? 1 : 0,
-    0.25,
-  );
-  textScaleSlider.x = map(
-    scene.ui.sizePanel.position,
+  printButton.y += controlsOffset;
+  let printVisibleX = printButton.x;
+  let printHiddenX = -width / 2 - printButton.w;
+  printButton.x = map(
+    editTransition,
     0,
     1,
-    textScaleSliderHiddenX,
-    textScaleSliderVisibleX,
+    printVisibleX,
+    printHiddenX,
   );
-  scene.gui.save.armed = scene.ui.pointer.pressTarget == "save";
-  scene.gui.save.update(scene.elapsedTime, uiPointer(), uiPointerActive());
-  scene.gui.save.button(
-    saveButton.x,
-    saveButton.y,
-    saveButton.w,
-    saveButton.h,
-    saveButton.r,
+  scene.gui.print.armed = scene.ui.pointer.pressTarget == "print";
+  scene.gui.print.update(scene.elapsedTime, uiPointer(), uiPointerActive());
+  scene.gui.print.button(
+    printButton.x,
+    printButton.y,
+    printButton.w,
+    printButton.h,
+    printButton.r,
   );
 
-  let color = textColorForWordIndex(scene.text.activeWord);
+  let color = scene.session.backgroundColor;
   if (demo) {
-    drawHsbColorSliders(color, saveButton);
+    drawHsbColorSliders(color, printButton);
   } else {
     drawColorPanel(color);
   }
-
-  scene.gui.contentScale.armed = scene.ui.pointer.pressTarget == "contentScale";
-  scene.gui.contentScale.update(
-    scene.elapsedTime,
-    uiPointer(),
-    uiPointerActive(),
-  );
-  scene.gui.contentScale.verticalSlider(
-    textScaleSlider.x,
-    textScaleSlider.y,
-    textScaleSlider.w,
-    textScaleSlider.h,
-    textScaleSlider.r,
-    textScaleValueForWordIndex(scene.text.activeWord),
-    220,
-    50,
-    100,
-  );
+  drawTexturePad();
+  drawLayerBar();
 
   let fieldGap = scene.ui.textField.gap * scene.ui.scale;
-  let saveBounds = scene.gui.save.bounds || saveButton;
   let doneButton = uiButtonBounds("right");
   doneButton.y += controlsOffset;
-  scene.ui.textField.position = animateData(
-    scene.ui.textField.position,
-    scene.text.edit ? 1 : 0,
-    0.25,
-  );
-  let editTransition = scene.ui.textField.position;
 
-  let fieldHeight = saveButton.h;
-  let fieldRadius = saveButton.r;
-  let fieldVisibleY = saveButton.y;
+  let fieldHeight = printButton.h;
+  let fieldRadius = printButton.r;
+  let fieldVisibleY = printButton.y;
   let doneHiddenX =
     width / 2 + doneButton.w + scene.ui.button.padding * scene.ui.scale;
   let doneX = map(editTransition, 0, 1, doneHiddenX, doneButton.x);
@@ -197,13 +171,20 @@ function draw() {
     doneButton.h,
     doneButton.r,
     scene.text.edit ? 1 : 0,
-    84,
-    64,
-    100,
+    ...scene.ui.actionColors.green,
   );
 
   let doneBounds = scene.gui.done.bounds || doneButton;
-  let fieldLeft = saveBounds.x + saveBounds.w / 2 + fieldGap;
+  let fieldClosedLeft = printVisibleX + printButton.w / 2 + fieldGap;
+  let fieldOpenLeft =
+    -width / 2 + scene.ui.button.padding * scene.ui.scale;
+  let fieldLeft = map(
+    editTransition,
+    0,
+    1,
+    fieldClosedLeft,
+    fieldOpenLeft,
+  );
   let fieldRight = map(
     editTransition,
     0,
@@ -265,7 +246,16 @@ function draw() {
 
   pop();
 
-  resetShader();
+  if (scene.ui.printPreview.open) {
+    _renderer.uMVMatrix.mat4.set(previewModelView);
+    _renderer.uPMatrix.mat4.set(previewProjection);
+    resetShader();
+    drawPrintPreview();
+  }
+
+  drawCameraSessionFrontUi();
+  drawPhotoFrameStage();
+  drawDebugGuides();
 
   ////
 
@@ -279,7 +269,24 @@ function draw() {
   // dynamicScaling(scene.fps.minimum, scene.fps.maximum);
 }
 
-function drawWordOnTextPath(txt, path, textSizeValue, pathIndex) {
+function drawDebugGuides() {
+  if (!scene.debug.guides) return;
+
+  let guideX = constrain(mouseX, 0, width) - width / 2;
+  let guideY = constrain(mouseY, 0, height) - height / 2;
+  push();
+  resetMatrix();
+  ortho();
+  resetShader();
+  _renderer.GL.clear(_renderer.GL.DEPTH_BUFFER_BIT);
+  stroke(255, 0, 0);
+  strokeWeight(1);
+  line(guideX, -height / 2, guideX, height / 2);
+  line(-width / 2, guideY, width / 2, guideY);
+  pop();
+}
+
+function drawWordOnTextPath(txt, path, textSizeValue, pathIndex, layerZ = 0) {
   let textColor = textColorForWordIndex(pathIndex);
   let points = boilingPath(smoothPath(path));
   let lengths = points.length >= 2 ? buildLengths(points) : [];
@@ -287,9 +294,13 @@ function drawWordOnTextPath(txt, path, textSizeValue, pathIndex) {
 
   let total = lengths[lengths.length - 1];
 
-  if (scene.text.edit) {
+  if (scene.text.edit && !scene.ui.printPreview.pending) {
     scene.workspace.push();
-    scene.workspace.translate(-width / 2, -height / 2, scene.layer.content);
+    scene.workspace.translate(
+      -width / 2,
+      -height / 2,
+      scene.layer.content + layerZ,
+    );
     scene.workspace.stroke(255, 0, 0, 125);
     scene.workspace.strokeWeight(2);
     scene.workspace.noFill();
@@ -344,7 +355,7 @@ function drawWordOnTextPath(txt, path, textSizeValue, pathIndex) {
     scene.workspace.translate(
       point.x - width / 2,
       point.y - height / 2,
-      scene.layer.content,
+      scene.layer.content + layerZ,
     );
     scene.workspace.rotate(angle);
     scene.workspace.scale(1 + touchGrow);
@@ -354,13 +365,26 @@ function drawWordOnTextPath(txt, path, textSizeValue, pathIndex) {
       textSizeValue,
       pathIndex * 1000 + i + 1,
       textColor,
+      textureMixForWordIndex(pathIndex),
     );
     scene.workspace.pop();
   }
 }
 
 function windowResized() {
+  let previousWidth = width;
+  let previousHeight = height;
   resizeCanvas(windowWidth, windowHeight);
   scene.workspace.resizeCanvas(width * scene.pixScale, height * scene.pixScale);
+  if (previousWidth > 0 && previousHeight > 0) {
+    let scaleX = width / previousWidth;
+    let scaleY = height / previousHeight;
+    for (let point of scene.session.photoFrame.points) {
+      point.x *= scaleX;
+      point.y *= scaleY;
+    }
+  }
+  scene.session.photoFrame.dirty = true;
+  scheduleSessionCacheSave();
   updateUiScale();
 }

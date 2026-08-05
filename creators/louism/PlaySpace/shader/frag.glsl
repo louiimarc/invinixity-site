@@ -10,11 +10,14 @@ u_toggle,
 u_axis,
 u_pointer,
 u_gradient,
+u_white_backdrop,
 u_overlay_enabled;
 
 uniform vec2
 u_resolution,
 u_mouse,
+u_gradient_center,
+u_gradient_size,
 u_overlay_center,
 u_overlay_size;
 
@@ -22,7 +25,11 @@ uniform vec3
 u_dimension,
 u_hsb,
 u_color0,
-u_color1;
+u_color1,
+u_color2,
+u_color3;
+
+uniform float u_gradient_radius;
 
 uniform sampler2D
 spectrum,
@@ -512,15 +519,37 @@ void main() {
     col.r = blur(texture0, st_ + shift, ps).r;
     col.g = blur(texture0, st_, ps).g;
     col.b = blur(texture0, st_ - shift, ps).b;
-
     vec3 solidColor = hsv2rgb(u_hsb / vec3(360.0, 100.0, 100.0));
     vec3 gradientColor = mix(u_color0, u_color1, UV.x);
-    vec3 controlColor = mix(solidColor, gradientColor, u_gradient);
-    float sliderAxis = mix(UV.x, 1.0 - UV.y, u_axis);
-    float sliderMask = smoothstep(-0.02, 0.02, sliderAxis - (sliderAxis * 2.0 - 1.0) * d / 4.0 - u_value);
-    vec3 sliderColor = max(controlColor, vec3(sliderMask));
-    vec3 toggleColor = mix(vec3(1.0), controlColor, u_toggle);
-    col.rgb *= mix(sliderColor, toggleColor, step(0.001, u_toggle));
+    vec3 gradientTop = mix(u_color0, u_color1, UV.x);
+    vec3 gradientBottom = mix(u_color2, u_color3, UV.x);
+    vec3 gradientField = mix(gradientTop, gradientBottom, UV.y);
+    if (u_gradient > 2.5) {
+        vec2 insetSize = max(u_gradient_size, vec2(1.0e-5));
+        vec2 insetUv = (UV - u_gradient_center) / insetSize + 0.5;
+        vec2 insetPoint = insetUv * 2.0 - 1.0;
+        float insetDistance = rect(insetPoint, vec2(1.0), u_gradient_radius);
+        float insetMask = smoothstep(0.02, -0.02, insetDistance);
+        vec2 insetColorUv = clamp(insetUv, 0.0, 1.0);
+        vec3 insetTop = mix(u_color0, u_color1, insetColorUv.x);
+        vec3 insetBottom = mix(u_color2, u_color3, insetColorUv.x);
+        vec3 insetGradient = mix(insetTop, insetBottom, insetColorUv.y);
+        vec3 insetBackdrop = mix(col.rgb, vec3(1.0), u_white_backdrop);
+        col.rgb = mix(col.rgb, insetBackdrop * insetGradient, insetMask);
+    } else {
+        col.rgb = mix(col.rgb, vec3(1.0), u_white_backdrop);
+        vec3 controlColor = solidColor;
+        if (u_gradient > 1.5) {
+            controlColor = gradientField;
+        } else if (u_gradient > 0.5) {
+            controlColor = gradientColor;
+        }
+        float sliderAxis = mix(UV.x, 1.0 - UV.y, u_axis);
+        float sliderMask = smoothstep(-0.02, 0.02, sliderAxis - (sliderAxis * 2.0 - 1.0) * d / 4.0 - u_value);
+        vec3 sliderColor = max(controlColor, vec3(sliderMask));
+        vec3 toggleColor = mix(vec3(1.0), controlColor, u_toggle);
+        col.rgb *= mix(sliderColor, toggleColor, step(0.001, u_toggle));
+    }
 
     vec2 overlaySize = max(u_overlay_size, vec2(1.0e-5));
     vec2 overlayUv = (UV - u_overlay_center) / overlaySize + 0.5;

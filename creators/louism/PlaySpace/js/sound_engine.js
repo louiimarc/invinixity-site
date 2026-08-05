@@ -127,6 +127,28 @@ class UiSoundEngine {
     this.step = (this.step + 1) % this.scale.length;
   }
 
+  countdown(step = 0, scaleName = "major", pointerX = 0.5) {
+    let scales = {
+      major: [0, 2, 4],
+      harmonic: [0, 4, 7],
+      harmonicMinor: [0, 3, 11],
+    };
+    let scale = scales[scaleName] || scales.major;
+    let semitones = scale[constrain(step, 0, scale.length - 1)];
+    let frequency = 261.63 * pow(2, semitones / 12);
+    this.playTone({
+      frequency,
+      startRatio: 0.98,
+      attack: 0.002,
+      decay: 0.1,
+      release: 0.04,
+      level: 0.07,
+      ramp: 0.01,
+      pointerX,
+      waveType: "sine",
+    });
+  }
+
   slide(control, value, pointerX = 0.5) {
     let step = round(constrain(value, 0, 1) * 15);
     if (this.sliderPositions[control] == step) return;

@@ -13,6 +13,90 @@ var scene = {
       width: 0,
       height: 0,
     },
+    grain: {
+      tile: null,
+      tileSize: 64,
+      grainSize: 3.5,
+      opacity: 0.05,
+      drift: { x: 0.0035, y: -0.0025 },
+    },
+    backgroundEntityAssets: {
+      textures: [],
+      textureSize: 512,
+      animatedPlacements: [],
+    },
+    debug: {
+      guides: false,
+    },
+    session: {
+      mode: "loading",
+      restoreMode: null,
+      photo: null,
+      faceDetection: {
+        status: "idle",
+        boxes: [],
+        requestId: 0,
+        error: "",
+      },
+      backgroundColor: {
+        hue: 0,
+        saturation: 0,
+        brightness: 0.2,
+      },
+      backgroundEntities: {
+        seed: 0,
+        placements: [],
+      },
+      cameraPrompt: {
+        open: false,
+        closing: false,
+        confirming: false,
+        transition: 0,
+        transitionTarget: 0,
+        nextMode: "idle",
+      },
+      camera: {
+        video: null,
+        stream: null,
+        buffer: null,
+        captureBuffer: null,
+        status: "idle",
+        error: "",
+        requestId: 0,
+        flash: 0,
+        nextTransition: 0,
+        confirmTransition: 0,
+        countdown: {
+          active: false,
+          value: 3,
+          startedAt: 0,
+          lastStep: -1,
+          scale: "harmonic", // "major", "harmonic", or "harmonicMinor"
+        },
+      },
+      photoFrame: {
+        points: [],
+        drawing: false,
+        closed: false,
+        dirty: true,
+        buffer: null,
+        transition: 0,
+        reviewTransition: 0,
+        faceAdjustment: null,
+        faceRequestId: -1,
+        closeRadius: 64,
+        sampleDistance: 4,
+        minimumPoints: 8,
+        minimumLength: 128,
+        jelly: {
+          speed: 1.1,
+          broadAmount: 8,
+          detailAmount: 2.4,
+          breathAmount: 1.4,
+          tangentAmount: 1.15,
+        },
+      },
+    },
   },
   inout = {
     audio: { spectrum: {} },
@@ -23,6 +107,9 @@ var scene = {
       ready: false,
       startedAt: 0,
       minimumDuration: 0.75,
+      completedAt: null,
+      retireDelay: 3,
+      retired: false,
       arrived: false,
       position: {
         x: 0.0,
@@ -56,7 +143,19 @@ scene.text = {
   maxCharacters: 24,
   activeWord: -1,
   pathEditArmed: false,
+  selectionOverride: null,
   storageKey: "playspace.text.v1",
+  hasSavedSession: false,
+  textureMixes: Object.create(null),
+  textureAssets: {
+    images: [],
+    buffers: {},
+    mixBuffers: {},
+    mixKeys: {},
+    borderBuffers: {},
+    textureSize: 512,
+  },
+  layerOrder: ["photo"],
   glyphCache: {},
   boil: {
     enabled: true,
@@ -83,6 +182,8 @@ scene.text = {
   pathGesture: {
     active: false,
     drawing: false,
+    drawable: false,
+    moved: false,
     pathIndex: -1,
     start: { x: 0, y: 0 },
     threshold: 12,
@@ -115,6 +216,10 @@ scene.ui = {
     radius: 34,
     padding: 34,
   },
+  actionColors: {
+    green: [90, 33.333333, 58.823529],
+    red: [350.322581, 60.784314, 100],
+  },
   controls: {
     position: 0,
   },
@@ -136,8 +241,54 @@ scene.ui = {
     wheelTextureResolution: 0,
     wheelTextureHue: null,
   },
-  sizePanel: {
+  texturePad: {
     position: 0,
+    bounds: null,
+    active: false,
+    resize: 1,
+    resizing: false,
+    resizeStartX: 0,
+    resizeStartY: 0,
+    resizeStartValue: 1,
+    dotScales: [],
+    previewMix: null,
+  },
+  layerBar: {
+    selectedKey: null,
+    dragging: false,
+    dragOffsetY: 0,
+    dragY: 0,
+    bounds: null,
+    panelBounds: null,
+    panelWidth: 0,
+    panelHeight: 0,
+    widths: Object.create(null),
+    positions: Object.create(null),
+  },
+  printPreview: {
+    open: false,
+    pending: false,
+    snapshot: null,
+    layers: [],
+    depthGap: 8,
+    transition: 0,
+    transitionTarget: 0,
+    closing: false,
+    completeSession: false,
+    introSpin: {
+      active: false,
+      startedAt: 0,
+      duration: 2.4,
+    },
+    rotation: { x: 0, y: 0 },
+    velocity: { x: 0, y: 0 },
+    drag: {
+      active: false,
+      moved: false,
+      lastX: 0,
+      lastY: 0,
+      lastTime: 0,
+    },
   },
   textField: {
     gap: 20,
@@ -237,21 +388,6 @@ function uiButtonBounds(side = "left") {
   return { x, y, w, h, r };
 }
 
-function uiVerticalSliderBounds(side = "right") {
-  let scale = scene.ui.scale;
-  let w = scene.ui.button.height * scale;
-  let h = scene.ui.button.height * 6 * scale;
-  let r = scene.ui.button.radius * scale;
-  let padding = scene.ui.button.padding * scale;
-  let x =
-    side == "right"
-      ? width / 2 - padding - w / 2
-      : -width / 2 + padding + w / 2;
-  let y = 0;
-
-  return { x, y, w, h, r };
-}
-
 function sliderValueFromPointer(bounds, pointerY = mouseY) {
   let y = pointerY - height / 2;
   return constrain(1 - (y - (bounds.y - bounds.h / 2)) / bounds.h, 0, 1);
@@ -270,11 +406,9 @@ function setTextScaleValue(value) {
 }
 
 function setTextColorValue(channel, value) {
-  let entry = textWordEntries()[scene.text.activeWord];
-  if (entry == null) return;
-  let color = textColorForWordIndex(scene.text.activeWord);
+  let color = scene.session.backgroundColor;
   if (!(channel in color)) return;
-  scene.text.colors[entry.key] = {
+  scene.session.backgroundColor = {
     ...color,
     [channel]: constrain(value, 0, 1),
   };
@@ -343,6 +477,8 @@ function syncTextFromInput(event) {
   if (scene.text.input == null) return;
   if (event?.isComposing) return;
 
+  clearTextSelectionOverride();
+
   let original = scene.text.input.value;
   let selectionStart = scene.text.input.selectionStart || 0;
   let selectionEnd = scene.text.input.selectionEnd || selectionStart;
@@ -367,6 +503,7 @@ function syncTextFromInput(event) {
 
 function syncTextCursorFromInput(event) {
   if (scene.text.input == null) return;
+  if (event != null) clearTextSelectionOverride();
   scene.text.cursor.pos =
     scene.text.input.selectionDirection == "backward"
       ? scene.text.input.selectionStart || 0
@@ -393,8 +530,32 @@ function syncInputFromText() {
 
 function focusTextInput() {
   if (scene.text.input == null) return;
+  clearTextSelectionOverride();
   syncInputFromText();
   scene.text.input.focus({ preventScroll: true });
+}
+
+function textSelectionState() {
+  let override = scene.text.selectionOverride;
+  if (override != null) {
+    return {
+      start: constrain(override.start, 0, scene.text.buffer.length),
+      end: constrain(override.end, 0, scene.text.buffer.length),
+      direction: override.direction || "forward",
+    };
+  }
+
+  let start = scene.text.input?.selectionStart ?? scene.text.cursor.pos;
+  let end = scene.text.input?.selectionEnd ?? start;
+  return {
+    start,
+    end,
+    direction: scene.text.input?.selectionDirection || "forward",
+  };
+}
+
+function clearTextSelectionOverride() {
+  scene.text.selectionOverride = null;
 }
 
 function setTextCursor(pos) {
@@ -402,6 +563,7 @@ function setTextCursor(pos) {
 }
 
 function setTextSelection(anchor, focus) {
+  clearTextSelectionOverride();
   anchor = constrain(anchor, 0, scene.text.buffer.length);
   focus = constrain(focus, 0, scene.text.buffer.length);
   let start = min(anchor, focus);
@@ -481,6 +643,7 @@ function setTextEdit(value) {
 
 function saveTextMemory() {
   try {
+    if (typeof syncLayerOrder == "function") syncLayerOrder();
     let paths = Object.create(null);
     for (let [wordKey, path] of Object.entries(scene.text.paths)) {
       if (path == null) continue;
@@ -492,15 +655,27 @@ function saveTextMemory() {
       cursorPos: scene.text.cursor.pos,
       colors: { ...scene.text.colors },
       sizes: { ...scene.text.sizes },
+      backgroundColor: { ...scene.session.backgroundColor },
+      backgroundEntities: {
+        seed: scene.session.backgroundEntities.seed,
+        placements: scene.session.backgroundEntities.placements.map(
+          (placement) => ({ ...placement }),
+        ),
+      },
+      textureMixes: { ...scene.text.textureMixes },
+      layerOrder: [...scene.text.layerOrder],
+      editing: scene.text.edit,
       paths,
     };
     localStorage.setItem(scene.text.storageKey, JSON.stringify(memory));
+    scene.text.hasSavedSession = true;
   } catch (error) {
     console.warn("Unable to save text memory", error);
   }
 }
 
 function loadTextMemory() {
+  scene.text.hasSavedSession = false;
   try {
     let raw = localStorage.getItem(scene.text.storageKey);
     if (raw == null) {
@@ -508,6 +683,7 @@ function loadTextMemory() {
     }
 
     let memory = JSON.parse(raw);
+    scene.text.hasSavedSession = true;
     scene.text.buffer = typeof memory.buffer == "string" ? memory.buffer : "";
     scene.text.cursor.pos = constrain(
       memory.cursorPos || scene.text.buffer.length,
@@ -515,6 +691,39 @@ function loadTextMemory() {
       scene.text.buffer.length,
     );
     scene.text.cursor.preferredColumn = currentColumn();
+    if (
+      memory.backgroundColor != null &&
+      typeof memory.backgroundColor == "object"
+    ) {
+      for (let channel of ["hue", "saturation", "brightness"]) {
+        if (Number.isFinite(memory.backgroundColor[channel])) {
+          scene.session.backgroundColor[channel] = constrain(
+            memory.backgroundColor[channel],
+            0,
+            1,
+          );
+        }
+      }
+    }
+    if (typeof loadStoredBackgroundEntities == "function") {
+      loadStoredBackgroundEntities(memory.backgroundEntities);
+    }
+    scene.text.textureMixes = Object.create(null);
+    if (memory.textureMixes != null && typeof memory.textureMixes == "object") {
+      for (let [wordKey, mix] of Object.entries(memory.textureMixes)) {
+        if (mix == null || typeof mix != "object") continue;
+        scene.text.textureMixes[wordKey] = cleanStoredTextureMix(mix);
+      }
+    } else if (memory.textureMix != null && typeof memory.textureMix == "object") {
+      let mix = cleanStoredTextureMix(memory.textureMix);
+      for (let entry of textWordEntries()) {
+        scene.text.textureMixes[entry.key] = { ...mix };
+      }
+    }
+    scene.text.layerOrder = Array.isArray(memory.layerOrder)
+      ? memory.layerOrder.filter((key) => typeof key == "string")
+      : ["photo"];
+    scene.text.edit = memory.editing === true;
     scene.text.colors = Object.create(null);
     if (memory.colors != null && typeof memory.colors == "object") {
       for (let [wordKey, color] of Object.entries(memory.colors)) {
@@ -588,10 +797,23 @@ function clearTextMemory() {
   scene.text.colors = Object.create(null);
   scene.text.sizes = Object.create(null);
   scene.text.sizeAnimations = Object.create(null);
+  scene.text.textureMixes = Object.create(null);
+  scene.text.layerOrder = ["photo"];
+  scene.ui.layerBar.selectedKey = null;
+  scene.ui.layerBar.dragging = false;
   scene.text.activeWord = -1;
   scene.text.pathEditArmed = false;
+  clearTextSelectionOverride();
+  if (typeof resetSessionBackgroundEntities == "function") {
+    resetSessionBackgroundEntities();
+  }
   syncInputFromText();
 
+  discardSavedTextMemory();
+}
+
+function discardSavedTextMemory() {
+  scene.text.hasSavedSession = false;
   try {
     localStorage.removeItem(scene.text.storageKey);
   } catch (error) {
@@ -646,9 +868,84 @@ function cleanStoredTextColor(color) {
 }
 
 function textColorForWordIndex(wordIndex) {
+  return textureMixTextColor(textureMixForWordIndex(wordIndex));
+}
+
+function defaultTextureMix() {
+  return { x: 0.5, y: 0.5 };
+}
+
+function cleanStoredTextureMix(mix) {
+  if (mix == null || typeof mix != "object") return defaultTextureMix();
+  return {
+    x: constrain(Number.isFinite(mix.x) ? mix.x : 0.5, 0, 1),
+    y: constrain(Number.isFinite(mix.y) ? mix.y : 0.5, 0, 1),
+  };
+}
+
+function textureMixForWordIndex(wordIndex) {
   let entry = textWordEntries()[wordIndex];
-  if (entry == null) return defaultTextColor();
-  return scene.text.colors[entry.key] || defaultTextColor();
+  if (entry == null) return defaultTextureMix();
+  return scene.text.textureMixes[entry.key] || defaultTextureMix();
+}
+
+function textureMixRgbValues(mix) {
+  let x = constrain(mix?.x ?? 0.5, 0, 1);
+  let y = constrain(mix?.y ?? 0.5, 0, 1);
+  let cyan = [0, 1, 1];
+  let magenta = [1, 0, 1];
+  let yellow = [1, 1, 0];
+  let grey = [0.5, 0.5, 0.5];
+
+  return cyan.map((channel, index) => {
+    let top = lerp(channel, magenta[index], x);
+    let bottom = lerp(yellow[index], grey[index], x);
+    return lerp(top, bottom, y);
+  });
+}
+
+function textureMixTextColor(mix) {
+  return rgbToHsvValues(textureMixRgbValues(mix));
+}
+
+function selectedTextWordIndexes() {
+  let entries = textWordEntries();
+  let selection = textSelectionState();
+  let selectionStart = selection.start;
+  let selectionEnd = selection.end;
+  let selectionFrom = min(selectionStart, selectionEnd);
+  let selectionTo = max(selectionStart, selectionEnd);
+
+  if (selectionFrom == selectionTo) {
+    return scene.text.activeWord >= 0 ? [scene.text.activeWord] : [];
+  }
+
+  return entries
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => {
+      return entry.start < selectionTo && entry.end > selectionFrom;
+    })
+    .map(({ index }) => index);
+}
+
+function setTextureMixForWordIndex(wordIndex, x, y, save = true) {
+  let entry = textWordEntries()[wordIndex];
+  if (entry == null) return false;
+  scene.text.textureMixes[entry.key] = {
+    x: constrain(x, 0, 1),
+    y: constrain(y, 0, 1),
+  };
+  if (save) saveTextMemory();
+  return true;
+}
+
+function setTextureMixForSelectedWords(x, y) {
+  let changed = false;
+  for (let wordIndex of selectedTextWordIndexes()) {
+    changed = setTextureMixForWordIndex(wordIndex, x, y, false) || changed;
+  }
+  if (changed) saveTextMemory();
+  return changed;
 }
 
 function textScaleValueForWordIndex(wordIndex) {
@@ -716,6 +1013,8 @@ function textWordIndexAtPosition(position) {
 function updateActiveWordFromCaret(position) {
   scene.text.activeWord = textWordIndexAtPosition(position);
   scene.text.pathEditArmed = scene.text.activeWord >= 0;
+  let entry = textWordEntries()[scene.text.activeWord];
+  scene.ui.layerBar.selectedKey = entry?.key ?? null;
 }
 
 function firstWordWithoutPath(start = 0) {
@@ -884,11 +1183,10 @@ function textFieldCharacterOffsets(start, end, leftEllipsis, rightEllipsis) {
 }
 
 function textFieldSelectionColor(wordIndex) {
-  let entry = textWordEntries()[wordIndex];
-  let color = entry == null ? null : scene.text.colors[entry.key];
-  return color == null
-    ? { hue: 0, saturation: 0, brightness: 0.8, opacity: 0.5 }
-    : { ...color, opacity: 0.8 };
+  return {
+    ...textureMixTextColor(textureMixForWordIndex(wordIndex)),
+    opacity: wordIndex < 0 ? 0.5 : 0.8,
+  };
 }
 
 function textFieldSelectionStops(start, end) {
@@ -932,9 +1230,10 @@ function textFieldDisplayLabel(maxWidth = Infinity, textSizeValue = 16) {
     return "Edit";
   }
 
-  let selectionStart = scene.text.input?.selectionStart ?? scene.text.cursor.pos;
-  let selectionEnd = scene.text.input?.selectionEnd ?? selectionStart;
-  let selectionDirection = scene.text.input?.selectionDirection || "forward";
+  let selection = textSelectionState();
+  let selectionStart = selection.start;
+  let selectionEnd = selection.end;
+  let selectionDirection = selection.direction;
   let selectionFrom = min(selectionStart, selectionEnd);
   let selectionTo = max(selectionStart, selectionEnd);
   let selectionActive = selectionFrom != selectionTo;
@@ -1312,6 +1611,36 @@ function fillWorkspaceText(gfx, color = defaultTextColor()) {
   gfx.colorMode(RGB, 255);
 }
 
+function drawSvgContourSet(gfx, glyph, contours, scaleValue, scaleMultiplier = 1) {
+  gfx.push();
+  gfx.translate(gfx.width / 2, gfx.height / 2);
+  gfx.scale(scaleValue * scaleMultiplier);
+  gfx.translate(-glyph.center.x, -glyph.center.y);
+
+  for (let i = 0; i < contours.length; i++) {
+    if (glyph.hierarchy.depths[i] % 2 != 0) continue;
+
+    gfx.beginShape();
+    for (let point of contours[i]) gfx.vertex(point.x, point.y);
+
+    for (let hole = 0; hole < contours.length; hole++) {
+      if (
+        glyph.hierarchy.parents[hole] != i ||
+        glyph.hierarchy.depths[hole] % 2 == 0
+      ) {
+        continue;
+      }
+      gfx.beginContour();
+      for (let point of contours[hole]) gfx.vertex(point.x, point.y);
+      gfx.endContour();
+    }
+
+    gfx.endShape(CLOSE);
+  }
+
+  gfx.pop();
+}
+
 function drawSvgGlyph(
   gfx,
   glyph,
@@ -1319,6 +1648,7 @@ function drawSvgGlyph(
   seed,
   wiggle = true,
   color = defaultTextColor(),
+  textureMix = null,
 ) {
   let scaleValue = size / scene.text.svg.viewBoxSize;
   let amount = wiggle ? scene.text.svg.edgeAmount / scaleValue : 0;
@@ -1337,38 +1667,22 @@ function drawSvgGlyph(
   }
 
   buffer.clear();
-  buffer.push();
-  buffer.translate(bufferSize / 2, bufferSize / 2);
-  buffer.scale(scaleValue);
-  buffer.translate(-glyph.center.x, -glyph.center.y);
   buffer.noStroke();
-  fillWorkspaceText(buffer, color);
+  fillWorkspaceText(
+    buffer,
+    textureMix == null ? color : defaultTextColor(),
+  );
+  drawSvgContourSet(buffer, glyph, contours, scaleValue);
 
-  for (let i = 0; i < contours.length; i++) {
-    if (glyph.hierarchy.depths[i] % 2 != 0) continue;
-
-    buffer.beginShape();
-    for (let point of contours[i]) buffer.vertex(point.x, point.y);
-
-    for (let hole = 0; hole < contours.length; hole++) {
-      if (
-        glyph.hierarchy.parents[hole] != i ||
-        glyph.hierarchy.depths[hole] % 2 == 0
-      ) {
-        continue;
-      }
-      buffer.beginContour();
-      for (let point of contours[hole]) buffer.vertex(point.x, point.y);
-      buffer.endContour();
-    }
-
-    buffer.endShape(CLOSE);
-  }
-
-  buffer.pop();
-
+  let texturedBuffer = textTextureBuffer(buffer, seed, textureMix);
+  let borderBuffer = texturedBuffer == null
+    ? null
+    : tornTextBorderBuffer(glyph, size, seed, wiggle);
   gfx.imageMode(CENTER);
-  gfx.image(buffer, 0, 0, bufferSize, bufferSize);
+  if (borderBuffer != null) {
+    gfx.image(borderBuffer, 0, 0, bufferSize, bufferSize);
+  }
+  gfx.image(texturedBuffer || buffer, 0, 0, bufferSize, bufferSize);
 }
 
 function glyphPointsFor(char, size) {
@@ -1401,6 +1715,7 @@ function drawBoilingGlyph(
   size,
   seed = 0,
   color = defaultTextColor(),
+  textureMix = null,
 ) {
   fillWorkspaceText(gfx, color);
   let svgGlyph = scene.text.svg.glyphs[char];
@@ -1412,6 +1727,7 @@ function drawBoilingGlyph(
       seed,
       scene.text.boil.enabled,
       color,
+      textureMix,
     );
     return;
   }

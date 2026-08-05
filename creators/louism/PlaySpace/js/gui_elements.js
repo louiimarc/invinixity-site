@@ -416,6 +416,7 @@ class GraphicalUserInterface {
     let drawX = this.#anchorX(x, w, fitWidth);
     this.shader.setUniform("u_hsb", [hue, saturation, brightness]);
     this.shader.setUniform("u_gradient", 0.0);
+    this.shader.setUniform("u_white_backdrop", 0.0);
     this.shader.setUniform("u_toggle", this.#toggle);
     this.shader.setUniform("u_value", 0.0);
     this.shader.setUniform("u_axis", 0.0);
@@ -439,6 +440,7 @@ class GraphicalUserInterface {
     let drawX = this.#anchorX(x, w, fitWidth);
     this.shader.setUniform("u_hsb", [hue, saturation, brightness]);
     this.shader.setUniform("u_gradient", 0.0);
+    this.shader.setUniform("u_white_backdrop", 0.0);
     this.shader.setUniform("u_value", this.#value);
     this.shader.setUniform("u_toggle", 0.0);
     this.shader.setUniform("u_axis", 0.0);
@@ -460,6 +462,7 @@ class GraphicalUserInterface {
     let fitWidth = this.#fitWidth(w, h);
     let drawX = this.#anchorX(x, w, fitWidth);
     this.shader.setUniform("u_gradient", 1.0);
+    this.shader.setUniform("u_white_backdrop", 0.0);
     this.shader.setUniform("u_color0", colorStart);
     this.shader.setUniform("u_color1", colorEnd);
     this.shader.setUniform("u_value", this.#value);
@@ -467,6 +470,36 @@ class GraphicalUserInterface {
     this.shader.setUniform("u_axis", 0.0);
     this.shader.setUniform("u_dimension", [fitWidth, h, r]);
     this.#draw(drawX, y, fitWidth, h, r);
+  }
+
+  gradientPanel(
+    x = 0,
+    y = 0,
+    w = 320,
+    h = 400,
+    r = 0.0,
+    gradientCenter = [0.5, 0.6],
+    gradientSize = [0.8, 0.64],
+    gradientRadius = 0.1,
+    colorTopLeft = [0, 1, 1],
+    colorTopRight = [1, 0, 1],
+    colorBottomLeft = [1, 1, 0],
+    colorBottomRight = [0.5, 0.5, 0.5],
+  ) {
+    this.shader.setUniform("u_gradient", 3.0);
+    this.shader.setUniform("u_white_backdrop", 0.8);
+    this.shader.setUniform("u_gradient_center", gradientCenter);
+    this.shader.setUniform("u_gradient_size", gradientSize);
+    this.shader.setUniform("u_gradient_radius", gradientRadius);
+    this.shader.setUniform("u_color0", colorTopLeft);
+    this.shader.setUniform("u_color1", colorTopRight);
+    this.shader.setUniform("u_color2", colorBottomLeft);
+    this.shader.setUniform("u_color3", colorBottomRight);
+    this.shader.setUniform("u_value", 0.0);
+    this.shader.setUniform("u_toggle", 1.0);
+    this.shader.setUniform("u_axis", 0.0);
+    this.shader.setUniform("u_dimension", [w, h, r]);
+    this.#draw(x, y, w, h, r, false);
   }
 
   verticalSlider(
@@ -483,6 +516,7 @@ class GraphicalUserInterface {
     this.#value = animateData(this.#value, value, 0.5);
     this.shader.setUniform("u_hsb", [hue, saturation, brightness]);
     this.shader.setUniform("u_gradient", 0.0);
+    this.shader.setUniform("u_white_backdrop", 0.0);
     this.shader.setUniform("u_value", this.#value);
     this.shader.setUniform("u_toggle", 0.0);
     this.shader.setUniform("u_axis", 1.0);
@@ -507,6 +541,7 @@ class GraphicalUserInterface {
     }
     this.shader.setUniform("u_hsb", [hue, saturation, brightness]);
     this.shader.setUniform("u_gradient", 0.0);
+    this.shader.setUniform("u_white_backdrop", 0.0);
     this.shader.setUniform("u_value", 0.0);
     this.shader.setUniform("u_toggle", 0.0);
     this.shader.setUniform("u_axis", 0.0);
@@ -527,6 +562,7 @@ class GraphicalUserInterface {
   ) {
     this.shader.setUniform("u_hsb", [hue, saturation, brightness]);
     this.shader.setUniform("u_gradient", 0.0);
+    this.shader.setUniform("u_white_backdrop", 0.0);
     this.shader.setUniform("u_value", 0.0);
     this.shader.setUniform("u_toggle", 0.0);
     this.shader.setUniform("u_axis", 0.0);

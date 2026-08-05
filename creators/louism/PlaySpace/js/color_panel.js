@@ -18,6 +18,14 @@ function hsvToRgbValues(color) {
   return rgb.map((channel) => channel + match);
 }
 
+function colorPanelEditsBackground() {
+  return scene.session.mode == "active";
+}
+
+function colorPanelIsActive() {
+  return colorPanelEditsBackground() && scene.text.edit;
+}
+
 function drawHsbColorSliders(color, saveButton) {
   let sliderWidth = 380 * scene.ui.scale;
   let sliderHeight = 52 * scene.ui.scale;
@@ -30,7 +38,7 @@ function drawHsbColorSliders(color, saveButton) {
     -width / 2 - sliderWidth - scene.ui.button.padding * scene.ui.scale;
   scene.ui.colorPanel.position = animateData(
     scene.ui.colorPanel.position,
-    scene.text.edit && data.loading.ready ? 1 : 0,
+    colorPanelIsActive() && data.loading.ready ? 1 : 0,
     0.25,
   );
   let sliderX = map(
@@ -99,34 +107,27 @@ function rgbToHsvValues(rgb, fallbackHue = 0) {
 }
 
 function setTextRgbValue(channel, value) {
-  let entry = textWordEntries()[scene.text.activeWord];
   let channelIndex = { red: 0, green: 1, blue: 2 }[channel];
-  if (entry == null || channelIndex == null) return;
+  if (channelIndex == null) return;
 
-  let color = textColorForWordIndex(scene.text.activeWord);
+  let color = scene.session.backgroundColor;
   let rgb = hsvToRgbValues(color);
   rgb[channelIndex] = constrain(value, 0, 1);
-  scene.text.colors[entry.key] = rgbToHsvValues(rgb, color.hue);
+  scene.session.backgroundColor = rgbToHsvValues(rgb, color.hue);
   saveTextMemory();
 }
 
 function setTextWheelHue(value) {
-  let entry = textWordEntries()[scene.text.activeWord];
-  if (entry == null) return;
-  let color = textColorForWordIndex(scene.text.activeWord);
-  scene.text.colors[entry.key] = {
-    ...color,
+  scene.session.backgroundColor = {
+    ...scene.session.backgroundColor,
     hue: ((value % 1) + 1) % 1,
   };
   saveTextMemory();
 }
 
 function setTextWheelSaturationBrightness(saturation, brightness) {
-  let entry = textWordEntries()[scene.text.activeWord];
-  if (entry == null) return;
-  let color = textColorForWordIndex(scene.text.activeWord);
-  scene.text.colors[entry.key] = {
-    ...color,
+  scene.session.backgroundColor = {
+    ...scene.session.backgroundColor,
     saturation: constrain(saturation, 0, 1),
     brightness: constrain(brightness, 0, 1),
   };
@@ -222,18 +223,16 @@ function discToSquarePoint(x, y) {
 function colorPanelTargetAtPointer() {
   let state = scene.ui.colorPanel;
   let bounds = state.bounds;
-  if (!scene.text.edit || bounds == null) {
+  if (!colorPanelIsActive() || bounds == null) {
     return null;
   }
-  if (!colorPanelPointInside(bounds.panel)) return null;
-  if (
-    state.detent == 0 ||
-    colorPanelPointInside(bounds.handle)
-  ) {
+  if (colorPanelPointInside(bounds.handle)) {
     return "colorPanelHandle";
   }
-  if (scene.text.activeWord < 0) return "colorPanel";
-
+  if (!colorPanelPointInside(bounds.panel)) return null;
+  if (state.detent == 0) {
+    return "colorPanelHandle";
+  }
   let pointerX = mouseX - width / 2;
   let pointerY = mouseY - height / 2;
   let wheel = bounds.wheel;
@@ -536,7 +535,7 @@ function animatedColorPanelColor(target, smooth = 0.2) {
 function drawColorPanel(color) {
   let state = scene.ui.colorPanel;
   let displayColor = animatedColorPanelColor(color);
-  let panelVisible = scene.text.edit && data.loading.ready;
+  let panelVisible = colorPanelIsActive() && data.loading.ready;
   state.position = animateData(
     state.position,
     panelVisible ? 1 : 0,
@@ -563,7 +562,7 @@ function drawColorPanel(color) {
   let panelTop = panelY - state.height / 2;
   let handleBounds = {
     x: layout.x,
-    y: panelTop + 14 * scene.ui.scale,
+    y: panelTop - 14 * scene.ui.scale,
     w: 80 * scene.ui.scale,
     h: 28 * scene.ui.scale,
   };
@@ -610,7 +609,6 @@ function drawColorPanel(color) {
     100,
   );
 
-  let clipState = beginColorPanelClip(panelBounds);
   push();
   translate(0, 0, 8);
   noStroke();
@@ -634,15 +632,22 @@ function drawColorPanel(color) {
     6 * scene.ui.scale,
     3 * scene.ui.scale,
   );
+  pop();
+
+  let clipState = beginColorPanelClip(panelBounds);
+  push();
+  translate(0, 0, 8);
+  noStroke();
+  rectMode(CENTER);
   fill(255);
   textFont(scene.font);
   textAlign(LEFT, CENTER);
   textSize(44 * scene.ui.scale);
   let headerContentY = panelTop + layout.headerHeight * 0.5;
   text(
-    "Colors",
+    "Background",
     layout.x - layout.w / 2 + layout.padding,
-    headerContentY,
+    headerContentY - 6 * scene.ui.scale,
   );
 
   let displayRgb = hsvToRgbValues(displayColor);

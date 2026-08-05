@@ -1,5 +1,27 @@
-function keyPressed() {
+function keyPressed(event) {
   userStartAudio();
+
+  if (key === "?") {
+    if (!event?.repeat) {
+      scene.debug.guides = !scene.debug.guides;
+    }
+    return false;
+  }
+
+  if (sessionCameraPromptOpen()) {
+    if (
+      keyCode === ESCAPE &&
+      !scene.session.cameraPrompt.confirming
+    ) {
+      cancelSessionCameraPrompt();
+    }
+    return false;
+  }
+
+  if (scene.ui.printPreview.open) {
+    if (keyCode === ESCAPE) closePrintPreview();
+    return false;
+  }
 
   if (keyCode === TAB) {
     setTextEdit(!scene.text.edit);
@@ -42,7 +64,58 @@ function moveVertical(dir) {
 }
 
 function uiButtonAtPointer() {
-  if (scene.text.edit && scene.text.activeWord >= 0) {
+  if (sessionCameraPromptOpen()) {
+    if (
+      scene.session.cameraPrompt.closing ||
+      scene.session.cameraPrompt.confirming
+    ) {
+      return "cameraPrompt";
+    }
+    if (scene.session.cameraPrompt.transition < 0.9) return "cameraPrompt";
+    if (scene.gui.cameraTake.hitTest()) return "cameraTake";
+    if (
+      scene.session.camera.status == "captured" &&
+      scene.session.camera.nextTransition > 0.9 &&
+      scene.gui.cameraNext.hitTest()
+    ) {
+      return "cameraNext";
+    }
+    if (scene.gui.cameraCancel.hitTest()) return "cameraCancel";
+    return "cameraPrompt";
+  }
+
+  if (scene.ui.printPreview.open) {
+    if (scene.ui.printPreview.closing) return "printPreview";
+    if (scene.gui.printCancel.hitTest()) return "printCancel";
+    if (scene.gui.printOk.hitTest()) return "printOk";
+    return "printPreview";
+  }
+
+  if (scene.session.mode == "frame" && scene.session.photoFrame.closed) {
+    if (
+      scene.session.photoFrame.reviewTransition > 0.9 &&
+      scene.gui.frameNext.hitTest()
+    ) {
+      return "frameNext";
+    }
+    if (
+      scene.session.photoFrame.reviewTransition > 0.9 &&
+      scene.gui.frameRedraw.hitTest()
+    ) {
+      return "frameRedraw";
+    }
+    return "frameReview";
+  }
+
+  if (
+    scene.session.mode == "idle" &&
+    data.loading.ready &&
+    data.loading.interface.hitTest()
+  ) {
+    return "sessionStart";
+  }
+
+  if (scene.text.edit) {
     if (demo) {
       for (let channel of ["hue", "saturation", "brightness"]) {
         if (scene.gui[channel].hitTest()) return channel;
@@ -51,7 +124,10 @@ function uiButtonAtPointer() {
       let colorPanelTarget = colorPanelTargetAtPointer();
       if (colorPanelTarget != null) return colorPanelTarget;
     }
-    if (scene.gui.contentScale.hitTest()) return "contentScale";
+    let layerTarget = layerBarTargetAtPointer();
+    if (layerTarget != null) return layerTarget;
+    let textureTarget = texturePadTargetAtPointer();
+    if (textureTarget != null) return textureTarget;
   }
 
   if (scene.gui.done.hitTest()) {
@@ -62,24 +138,49 @@ function uiButtonAtPointer() {
     return "edit";
   }
 
-  if (scene.gui.save.hitTest()) {
-    return "save";
+  if (!scene.text.edit && scene.gui.print.hitTest()) {
+    return "print";
   }
 
   return null;
 }
 
 function beginUiButtonPress() {
+  if (sessionCameraPromptOpen()) {
+    scene.ui.pointer.pressTarget = uiButtonAtPointer();
+    if (
+      ["cameraTake", "cameraNext", "cameraCancel"].includes(
+        scene.ui.pointer.pressTarget,
+      )
+    ) {
+      scene.ui.pointer.pressStartedOnButton = true;
+    }
+    return true;
+  }
+
+  if (scene.ui.printPreview.open) {
+    scene.ui.pointer.pressTarget = uiButtonAtPointer();
+    if (scene.ui.printPreview.closing) {
+      return true;
+    }
+    if (["printCancel", "printOk"].includes(scene.ui.pointer.pressTarget)) {
+      scene.ui.pointer.pressStartedOnButton = true;
+      return true;
+    }
+    beginPrintPreviewDrag();
+    return true;
+  }
+
   scene.ui.pointer.pressTarget = uiButtonAtPointer();
   scene.ui.pointer.pressStartedOnButton = scene.ui.pointer.pressTarget != null;
   if (!demo && beginColorPanelInteraction(scene.ui.pointer.pressTarget)) {
     return true;
   }
-  if (scene.ui.pointer.pressTarget == "contentScale") {
-    scene.ui.slider.active = "contentScale";
-    let value = sliderValueFromPointer(scene.gui.contentScale.bounds);
-    setTextScaleValue(value);
-    inout.audio.ui?.slide("contentScale", value, mouseX / width);
+  if (beginLayerBarInteraction(scene.ui.pointer.pressTarget)) {
+    return true;
+  }
+  if (beginTexturePadInteraction(scene.ui.pointer.pressTarget)) {
+    return true;
   }
   if (
     demo &&
@@ -111,6 +212,33 @@ function beginUiButtonPress() {
 }
 
 function updateUiButtonPress() {
+  if (
+    sessionCameraPromptOpen() &&
+    scene.ui.pointer.pressStartedOnButton
+  ) {
+    if (uiButtonAtPointer() != scene.ui.pointer.pressTarget) {
+      scene.ui.pointer.pressTarget = null;
+    }
+    return true;
+  }
+
+  if (sessionCameraPromptOpen()) return true;
+
+  if (scene.ui.printPreview.open && scene.ui.printPreview.drag.active) {
+    updatePrintPreviewDrag();
+    return true;
+  }
+
+  if (
+    scene.ui.printPreview.open &&
+    scene.ui.pointer.pressStartedOnButton
+  ) {
+    if (uiButtonAtPointer() != scene.ui.pointer.pressTarget) {
+      scene.ui.pointer.pressTarget = null;
+    }
+    return true;
+  }
+
   if (!scene.ui.pointer.pressStartedOnButton) {
     return false;
   }
@@ -126,11 +254,10 @@ function updateUiButtonPress() {
   if (!demo && updateColorPanelInteraction(scene.ui.pointer.pressTarget)) {
     return true;
   }
-
-  if (scene.ui.slider.active == "contentScale") {
-    let value = sliderValueFromPointer(scene.gui.contentScale.bounds);
-    setTextScaleValue(value);
-    inout.audio.ui?.slide("contentScale", value, mouseX / width);
+  if (updateLayerBarInteraction(scene.ui.pointer.pressTarget)) {
+    return true;
+  }
+  if (updateTexturePadInteraction(scene.ui.pointer.pressTarget)) {
     return true;
   }
 
@@ -157,6 +284,11 @@ function updateUiButtonPress() {
 }
 
 function endUiButtonPress() {
+  if (scene.ui.printPreview.open && scene.ui.printPreview.drag.active) {
+    endPrintPreviewDrag();
+    return true;
+  }
+
   let pressTarget = scene.ui.pointer.pressTarget;
   let releaseTarget = uiButtonAtPointer();
   let startedOnButton = scene.ui.pointer.pressStartedOnButton;
@@ -170,6 +302,12 @@ function endUiButtonPress() {
   if (!demo && endColorPanelInteraction(pressTarget)) {
     return true;
   }
+  if (endLayerBarInteraction(pressTarget)) {
+    return true;
+  }
+  if (endTexturePadInteraction(pressTarget)) {
+    return true;
+  }
 
   if (cursorDragActive) {
     saveTextMemory();
@@ -180,11 +318,48 @@ function endUiButtonPress() {
     return startedOnButton;
   }
 
-  if (["save", "edit", "done"].includes(releaseTarget)) {
+  if (
+    [
+      "sessionStart",
+      "cameraCancel",
+      "cameraNext",
+      "frameNext",
+      "frameRedraw",
+      "print",
+      "printCancel",
+      "printOk",
+      "edit",
+      "done",
+    ].includes(
+      releaseTarget,
+    )
+  ) {
     inout.audio.ui?.tap(releaseTarget, mouseX / width);
   }
 
-  if (releaseTarget == "edit") {
+  if (releaseTarget == "sessionStart") {
+    openSessionCameraPrompt();
+  } else if (releaseTarget == "cameraTake") {
+    if (scene.session.camera.status == "captured") {
+      retakeSessionPhoto();
+    } else {
+      beginSessionPhotoCountdown();
+    }
+  } else if (releaseTarget == "cameraNext") {
+    acceptSessionPhoto();
+  } else if (releaseTarget == "cameraCancel") {
+    cancelSessionCameraPrompt();
+  } else if (releaseTarget == "frameNext") {
+    acceptSessionPhotoFrame();
+  } else if (releaseTarget == "frameRedraw") {
+    redrawSessionPhotoFrame();
+  } else if (releaseTarget == "print") {
+    requestPrintPreview();
+  } else if (releaseTarget == "printCancel") {
+    closePrintPreview(false);
+  } else if (releaseTarget == "printOk") {
+    closePrintPreview(true);
+  } else if (releaseTarget == "edit") {
     setTextEdit(true);
   } else if (releaseTarget == "done") {
     setTextEdit(false);
@@ -194,16 +369,14 @@ function endUiButtonPress() {
 }
 
 function beginTextPathGesture() {
-  if (
-    !scene.text.edit ||
-    scene.text.activeWord < 0 ||
-    (!scene.text.pathEditArmed &&
-      textPathForWordIndex(scene.text.activeWord) != null)
-  ) {
-    return;
-  }
+  if (!scene.text.edit) return;
   scene.text.pathGesture.active = true;
   scene.text.pathGesture.drawing = false;
+  scene.text.pathGesture.drawable =
+    scene.text.activeWord >= 0 &&
+    (scene.text.pathEditArmed ||
+      textPathForWordIndex(scene.text.activeWord) == null);
+  scene.text.pathGesture.moved = false;
   scene.text.pathGesture.pathIndex = -1;
   scene.text.pathGesture.start.x = mouseX;
   scene.text.pathGesture.start.y = mouseY;
@@ -216,6 +389,8 @@ function updateTextPathGesture() {
   if (!gesture.drawing) {
     let movement = dist(gesture.start.x, gesture.start.y, mouseX, mouseY);
     if (movement < gesture.threshold * scene.ui.scale) return true;
+    gesture.moved = true;
+    if (!gesture.drawable) return true;
 
     gesture.drawing = true;
     gesture.pathIndex = scene.text.activeWord;
@@ -244,12 +419,19 @@ function updateTextPathGesture() {
 
 function endTextPathGesture() {
   let completedPath = scene.text.pathGesture.drawing;
+  let selectCanvasItem =
+    scene.text.pathGesture.active && !scene.text.pathGesture.moved;
   scene.text.pathGesture.active = false;
   scene.text.pathGesture.drawing = false;
+  scene.text.pathGesture.drawable = false;
+  scene.text.pathGesture.moved = false;
   scene.text.pathGesture.pathIndex = -1;
 
   if (completedPath) {
     saveTextMemory();
+  }
+  if (selectCanvasItem) {
+    selectLayerItemAtCanvasPointer();
   }
 }
 
@@ -257,6 +439,10 @@ function mousePressed() {
   userStartAudio();
   setUiPointer();
   setUiPointerActive(1);
+
+  if (beginPhotoFrameGesture()) {
+    return false;
+  }
 
   if (beginUiButtonPress()) {
     return false;
@@ -268,6 +454,10 @@ function mousePressed() {
 function mouseReleased() {
   setUiPointer();
 
+  if (endPhotoFrameGesture()) {
+    return false;
+  }
+
   if (endUiButtonPress()) {
     return false;
   }
@@ -278,6 +468,9 @@ function mouseReleased() {
 function mouseDragged() {
   setUiPointer();
   setUiPointerActive(1);
+  if (updatePhotoFrameGesture()) {
+    return false;
+  }
   if (updateUiButtonPress()) {
     return false;
   }
@@ -294,6 +487,9 @@ function touchStarted() {
   userStartAudio();
   setUiPointer();
   setUiPointerActive(1);
+  if (beginPhotoFrameGesture()) {
+    return false;
+  }
   if (beginUiButtonPress()) {
     return false;
   }
@@ -306,6 +502,9 @@ function touchStarted() {
 function touchMoved() {
   setUiPointer();
   setUiPointerActive(1);
+  if (updatePhotoFrameGesture()) {
+    return false;
+  }
   if (updateUiButtonPress()) {
     return false;
   }
@@ -318,6 +517,9 @@ function touchMoved() {
 function touchEnded() {
   setUiPointer();
   setUiPointerActive(0);
+  if (endPhotoFrameGesture()) {
+    return false;
+  }
   endUiButtonPress();
   endTextPathGesture();
   return false;
