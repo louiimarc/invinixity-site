@@ -42,10 +42,74 @@ function checkerboardBuffer() {
   return state.buffer;
 }
 
+function drawCompositionOuterTint() {
+  if (!["frame", "active"].includes(scene.session.mode)) return;
+  let state = scene.composition;
+  let bounds = compositionBounds();
+  let backgroundBrightness = constrain(
+    scene.session.backgroundColor?.brightness ?? 0.5,
+    0,
+    1,
+  );
+  let marginGrey = (1 - backgroundBrightness) * 255;
+  let tintKey = [
+    width,
+    height,
+    bounds.x,
+    bounds.y,
+    bounds.width,
+    bounds.height,
+    marginGrey,
+  ].map((value) => round(value * 10) / 10).join("|");
+
+  if (state.tintBuffer == null) {
+    state.tintBuffer = createGraphics(width, height);
+    state.tintBuffer.pixelDensity(1);
+  } else if (
+    state.tintBuffer.width != width ||
+    state.tintBuffer.height != height
+  ) {
+    state.tintBuffer.resizeCanvas(width, height);
+  }
+
+  if (state.tintKey != tintKey) {
+    let buffer = state.tintBuffer;
+    let context = buffer.drawingContext;
+    buffer.clear();
+    buffer.rectMode(CORNER);
+    buffer.noStroke();
+    buffer.fill(marginGrey, 25.5);
+    buffer.rect(0, 0, width, height);
+    context.save();
+    context.globalCompositeOperation = "destination-out";
+    context.fillStyle = "rgba(0, 0, 0, 1)";
+    context.beginPath();
+    context.roundRect(
+      bounds.x,
+      bounds.y,
+      bounds.width,
+      bounds.height,
+      compositionCornerRadius(bounds),
+    );
+    context.fill();
+    context.restore();
+    state.tintKey = tintKey;
+  }
+
+  push();
+  resetShader();
+  translate(0, 0, 2);
+  imageMode(CENTER);
+  image(state.tintBuffer, 0, 0, width, height);
+  pop();
+}
+
 function draw() {
   updateUiScale();
   setUiPointer();
   updateUiPointer();
+  updateOptionsWorkspaceLayout();
+  updateControlSideTransition();
 
   background(0);
   let canvasGl = _renderer.GL;
@@ -60,9 +124,8 @@ function draw() {
   scene.elapsedTime = millis() / 1000.0;
   inout.audio.update();
   inout.audio.ui?.update();
-  drawBackgroundEntities(scene.workspace);
   let previewBaseSnapshot = scene.ui.printPreview.pending
-    ? scene.workspace.get()
+    ? cardPreviewSnapshot(scene.workspace, true)
     : null;
 
   // scene.shader.setUniform("spectrum", inout.audio.spectrum.texture);
@@ -73,16 +136,17 @@ function draw() {
   // scene.shader.setUniform("u_resolution", [width, height]);
   // scene.shader.setUniform("u_mouse", [mouseX, mouseY]);
 
-  let baseTextSize = min(width, height) / 4;
+  let composition = compositionBounds();
+  let baseTextSize = min(composition.width, composition.height) / 4;
   scene.workspace.textAlign(CENTER, CENTER);
 
   if (data.loading.ready) {
     drawLayeredWorkspaceContent(baseTextSize);
-    drawGrainFinish(scene.workspace);
+    drawFrameOverlay(scene.workspace);
   }
-
   imageMode(CENTER);
   image(scene.workspace, 0, 0, width, height);
+  drawCompositionOuterTint();
   capturePrintPreview(previewBaseSnapshot);
   let previewModelView = scene.ui.printPreview.open
     ? _renderer.uMVMatrix.mat4.slice()
@@ -142,14 +206,10 @@ function draw() {
     printButton.r,
   );
 
-  let color = scene.session.backgroundColor;
-  if (demo) {
-    drawHsbColorSliders(color, printButton);
-  } else {
-    drawColorPanel(color);
-  }
+  drawColorPanel(scene.ui.colorPanel.color);
   drawTexturePad();
   drawLayerBar();
+  drawControlSideSwitch();
 
   let fieldGap = scene.ui.textField.gap * scene.ui.scale;
   let doneButton = uiButtonBounds("right");
@@ -269,6 +329,38 @@ function draw() {
   // dynamicScaling(scene.fps.minimum, scene.fps.maximum);
 }
 
+function drawControlSideSwitch() {
+  let visible =
+    data.loading.ready &&
+    scene.session.mode == "active" &&
+    scene.text.edit;
+  let state = scene.ui.sideSwitch;
+  state.position = animateData(state.position, visible ? 1 : 0, 0.25);
+  if (!visible && state.position < 0.001) {
+    scene.gui.sideSwitch.bounds = null;
+    return;
+  }
+
+  let scale = scene.ui.scale;
+  let size = scene.ui.button.height * scale;
+  let padding = scene.ui.button.padding * scale;
+  let leftX = -width / 2 + padding + size / 2;
+  let rightX = width / 2 - padding - size / 2;
+  let x = lerp(rightX, leftX, controlSideMix());
+  let visibleY = height / 2 - padding - size / 2;
+  let hiddenY = height / 2 + size / 2;
+  let y = lerp(hiddenY, visibleY, state.position);
+  scene.gui.sideSwitch.label = controlsOnRight() ? "<" : ">";
+  scene.gui.sideSwitch.armed =
+    scene.ui.pointer.pressTarget == "sideSwitch";
+  scene.gui.sideSwitch.update(
+    scene.elapsedTime,
+    uiPointer(),
+    uiPointerActive(),
+  );
+  scene.gui.sideSwitch.button(x, y, size, size, size / 2);
+}
+
 function drawDebugGuides() {
   if (!scene.debug.guides) return;
 
@@ -287,12 +379,13 @@ function drawDebugGuides() {
 }
 
 function drawWordOnTextPath(txt, path, textSizeValue, pathIndex, layerZ = 0) {
-  let textColor = textColorForWordIndex(pathIndex);
   let points = boilingPath(smoothPath(path));
   let lengths = points.length >= 2 ? buildLengths(points) : [];
   if (points.length < 2 || lengths.length < 2) return;
 
   let total = lengths[lengths.length - 1];
+  let textureMix = textureMixForWordIndex(pathIndex);
+  let glyphGroups = textGlyphGroupsForWord(pathIndex + 1, txt.length, textureMix);
 
   if (scene.text.edit && !scene.ui.printPreview.pending) {
     scene.workspace.push();
@@ -359,13 +452,12 @@ function drawWordOnTextPath(txt, path, textSizeValue, pathIndex, layerZ = 0) {
     );
     scene.workspace.rotate(angle);
     scene.workspace.scale(1 + touchGrow);
-    drawBoilingGlyph(
+    drawTextGlyphImage(
       scene.workspace,
       txt[i],
       textSizeValue,
       pathIndex * 1000 + i + 1,
-      textColor,
-      textureMixForWordIndex(pathIndex),
+      glyphGroups[i],
     );
     scene.workspace.pop();
   }
@@ -377,14 +469,12 @@ function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
   scene.workspace.resizeCanvas(width * scene.pixScale, height * scene.pixScale);
   if (previousWidth > 0 && previousHeight > 0) {
-    let scaleX = width / previousWidth;
-    let scaleY = height / previousHeight;
-    for (let point of scene.session.photoFrame.points) {
-      point.x *= scaleX;
-      point.y *= scaleY;
-    }
+    remapArtworkToComposition(previousWidth, previousHeight);
   }
   scene.session.photoFrame.dirty = true;
   scheduleSessionCacheSave();
+  if (["frame", "active"].includes(scene.session.mode)) {
+    saveTextMemory();
+  }
   updateUiScale();
 }

@@ -116,14 +116,9 @@ function uiButtonAtPointer() {
   }
 
   if (scene.text.edit) {
-    if (demo) {
-      for (let channel of ["hue", "saturation", "brightness"]) {
-        if (scene.gui[channel].hitTest()) return channel;
-      }
-    } else {
-      let colorPanelTarget = colorPanelTargetAtPointer();
-      if (colorPanelTarget != null) return colorPanelTarget;
-    }
+    if (scene.gui.sideSwitch.hitTest()) return "sideSwitch";
+    let colorPanelTarget = colorPanelTargetAtPointer();
+    if (colorPanelTarget != null) return colorPanelTarget;
     let layerTarget = layerBarTargetAtPointer();
     if (layerTarget != null) return layerTarget;
     let textureTarget = texturePadTargetAtPointer();
@@ -173,7 +168,7 @@ function beginUiButtonPress() {
 
   scene.ui.pointer.pressTarget = uiButtonAtPointer();
   scene.ui.pointer.pressStartedOnButton = scene.ui.pointer.pressTarget != null;
-  if (!demo && beginColorPanelInteraction(scene.ui.pointer.pressTarget)) {
+  if (beginColorPanelInteraction(scene.ui.pointer.pressTarget)) {
     return true;
   }
   if (beginLayerBarInteraction(scene.ui.pointer.pressTarget)) {
@@ -181,22 +176,6 @@ function beginUiButtonPress() {
   }
   if (beginTexturePadInteraction(scene.ui.pointer.pressTarget)) {
     return true;
-  }
-  if (
-    demo &&
-    ["hue", "saturation", "brightness"].includes(
-      scene.ui.pointer.pressTarget,
-    )
-  ) {
-    scene.ui.slider.active = scene.ui.pointer.pressTarget;
-    let value = horizontalSliderValueFromPointer(
-      scene.gui[scene.ui.slider.active].bounds,
-    );
-    setTextColorValue(
-      scene.ui.slider.active,
-      value,
-    );
-    inout.audio.ui?.slide(scene.ui.slider.active, value, mouseX / width);
   }
   if (scene.text.edit && scene.ui.pointer.pressTarget == "edit") {
     focusTextInput();
@@ -251,28 +230,13 @@ function updateUiButtonPress() {
     return true;
   }
 
-  if (!demo && updateColorPanelInteraction(scene.ui.pointer.pressTarget)) {
+  if (updateColorPanelInteraction(scene.ui.pointer.pressTarget)) {
     return true;
   }
   if (updateLayerBarInteraction(scene.ui.pointer.pressTarget)) {
     return true;
   }
   if (updateTexturePadInteraction(scene.ui.pointer.pressTarget)) {
-    return true;
-  }
-
-  if (
-    demo &&
-    ["hue", "saturation", "brightness"].includes(scene.ui.slider.active)
-  ) {
-    let value = horizontalSliderValueFromPointer(
-      scene.gui[scene.ui.slider.active].bounds,
-    );
-    setTextColorValue(
-      scene.ui.slider.active,
-      value,
-    );
-    inout.audio.ui?.slide(scene.ui.slider.active, value, mouseX / width);
     return true;
   }
 
@@ -299,7 +263,7 @@ function endUiButtonPress() {
   scene.ui.pointer.pressTarget = null;
   scene.ui.pointer.pressStartedOnButton = false;
 
-  if (!demo && endColorPanelInteraction(pressTarget)) {
+  if (endColorPanelInteraction(pressTarget)) {
     return true;
   }
   if (endLayerBarInteraction(pressTarget)) {
@@ -330,6 +294,7 @@ function endUiButtonPress() {
       "printOk",
       "edit",
       "done",
+      "sideSwitch",
     ].includes(
       releaseTarget,
     )
@@ -363,6 +328,8 @@ function endUiButtonPress() {
     setTextEdit(true);
   } else if (releaseTarget == "done") {
     setTextEdit(false);
+  } else if (releaseTarget == "sideSwitch") {
+    toggleControlSide();
   }
 
   return true;
@@ -370,21 +337,24 @@ function endUiButtonPress() {
 
 function beginTextPathGesture() {
   if (!scene.text.edit) return;
+  let start = constrainPointToComposition(mouseX, mouseY, true);
   scene.text.pathGesture.active = true;
   scene.text.pathGesture.drawing = false;
   scene.text.pathGesture.drawable =
     scene.text.activeWord >= 0 &&
+    pointInsideComposition(mouseX, mouseY, true) &&
     (scene.text.pathEditArmed ||
       textPathForWordIndex(scene.text.activeWord) == null);
   scene.text.pathGesture.moved = false;
   scene.text.pathGesture.pathIndex = -1;
-  scene.text.pathGesture.start.x = mouseX;
-  scene.text.pathGesture.start.y = mouseY;
+  scene.text.pathGesture.start.x = start.x;
+  scene.text.pathGesture.start.y = start.y;
 }
 
 function updateTextPathGesture() {
   let gesture = scene.text.pathGesture;
   if (!scene.text.edit || !gesture.active) return false;
+  let pointer = constrainPointToComposition(mouseX, mouseY, true);
 
   if (!gesture.drawing) {
     let movement = dist(gesture.start.x, gesture.start.y, mouseX, mouseY);
@@ -394,8 +364,8 @@ function updateTextPathGesture() {
 
     gesture.drawing = true;
     gesture.pathIndex = scene.text.activeWord;
-    let deltaX = mouseX - gesture.start.x;
-    let deltaY = mouseY - gesture.start.y;
+    let deltaX = pointer.x - gesture.start.x;
+    let deltaY = pointer.y - gesture.start.y;
     setTextPathForWordIndex(gesture.pathIndex, [
       createVector(gesture.start.x, gesture.start.y),
       createVector(
@@ -406,11 +376,11 @@ function updateTextPathGesture() {
         gesture.start.x + (deltaX * 2) / 3,
         gesture.start.y + (deltaY * 2) / 3,
       ),
-      createVector(mouseX, mouseY),
+      pointer,
     ]);
   } else {
     let path = textPathForWordIndex(gesture.pathIndex);
-    if (path != null) path.push(createVector(mouseX, mouseY));
+    if (path != null) path.push(pointer);
   }
 
   saveTextMemory();

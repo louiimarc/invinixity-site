@@ -76,7 +76,8 @@ function layerPointSegmentDistance(px, py, a, b) {
 function layerWordHit(wordIndex, x, y) {
   let path = textPathForWordIndex(wordIndex);
   if (path == null || path.length < 2) return false;
-  let baseTextSize = min(width, height) / 4;
+  let composition = compositionBounds();
+  let baseTextSize = min(composition.width, composition.height) / 4;
   let hitRadius = max(
     24 * scene.ui.scale,
     textSizeForWordIndex(wordIndex, baseTextSize) * 0.32,
@@ -105,6 +106,7 @@ function layerPointInsidePhoto(x, y) {
 }
 
 function layerItemAtCanvasPointer() {
+  if (!pointInsideComposition(mouseX, mouseY)) return null;
   let order = syncLayerOrder();
   for (let i = order.length - 1; i >= 0; i--) {
     let item = layerItemForKey(order[i]);
@@ -169,33 +171,49 @@ function selectLayerItemAtCanvasPointer() {
 function layerBarLayout() {
   let order = [...syncLayerOrder()].reverse();
   let scale = scene.ui.scale;
-  let textureLayout = texturePadLayout();
-  let lineHeight = 6 * scale;
-  let lineGap = 22 * scale;
-  let normalWidth = 44 * scale;
-  let selectedWidth = 92 * scale;
+  let optionsLayout = texturePadLayout();
+  let lineHeight = 24 * scale;
+  let lineGap = 40 * scale;
+  let headerHeight = 64 * scale;
+  let panelPadding = 18 * scale;
+  let availableLineWidth = max(
+    44 * scale,
+    optionsLayout.panelWidth - panelPadding * 2,
+  );
+  let normalWidth = max(44 * scale, availableLineWidth * 0.35);
+  let selectedWidth = availableLineWidth;
   let contentHeight = max(
     lineHeight,
     (order.length - 1) * lineGap + lineHeight,
   );
-  let panelPadding = 18 * scale;
-  let activeWidth = scene.ui.layerBar.selectedKey == null
-    ? normalWidth
-    : selectedWidth;
-  let targetPanelWidth = activeWidth + panelPadding * 2;
-  let targetPanelHeight = contentHeight + panelPadding * 2;
-  let panelRight =
-    textureLayout.x + textureLayout.panelWidth / 2;
-  let lineRight = panelRight - panelPadding;
+  let targetPanelWidth = optionsLayout.panelWidth;
+  let targetPanelHeight =
+    headerHeight + contentHeight + panelPadding * 2;
+  let currentPanelHeight = scene.ui.layerBar.panelHeight > 0
+    ? scene.ui.layerBar.panelHeight
+    : targetPanelHeight;
+  let optionsTop = optionsLayout.y - optionsLayout.panelHeight / 2;
+  let panelGap = 8 * scale;
+  let desiredPanelY =
+    optionsTop - panelGap - currentPanelHeight / 2;
+  let topLimit = -height / 2 + 4 * scale;
+  let panelY = max(
+    desiredPanelY,
+    topLimit + currentPanelHeight / 2,
+  );
+  let contentTop =
+    panelY - currentPanelHeight / 2 +
+    headerHeight + panelPadding + lineHeight / 2;
   return {
-    panelRight,
+    optionsLayout,
+    sideMix: controlSideMix(),
     panelPadding,
     targetPanelWidth,
     targetPanelHeight,
-    lineRight,
-    y: 0,
-    top: -contentHeight / 2,
+    y: panelY,
+    top: contentTop,
     height: contentHeight,
+    headerHeight,
     lineHeight,
     lineGap,
     normalWidth,
@@ -206,7 +224,11 @@ function layerBarLayout() {
 
 function layerBarTargetAtPointer() {
   let state = scene.ui.layerBar;
-  if (!scene.text.edit || state.bounds == null) {
+  if (
+    !scene.text.edit ||
+    state.position < 0.99 ||
+    state.bounds == null
+  ) {
     return null;
   }
   let selectedBounds = state.bounds[state.selectedKey];
@@ -272,22 +294,19 @@ function drawLayerBar() {
     scene.text.edit &&
     data.loading.ready &&
     syncLayerOrder().length > 0;
-  if (!visible) {
+  state.position = animateData(
+    state.position,
+    visible ? 1 : 0,
+    0.25,
+  );
+  if (!visible && state.position < 0.001) {
     state.bounds = null;
     state.panelBounds = null;
     return;
   }
 
   let layout = layerBarLayout();
-  if (state.panelWidth <= 0) {
-    state.panelWidth = layout.targetPanelWidth;
-  } else {
-    state.panelWidth = animateData(
-      state.panelWidth,
-      layout.targetPanelWidth,
-      0.3,
-    );
-  }
+  state.panelWidth = layout.targetPanelWidth;
   if (state.panelHeight <= 0) {
     state.panelHeight = layout.targetPanelHeight;
   } else {
@@ -297,10 +316,30 @@ function drawLayerBar() {
       0.3,
     );
   }
-  let panelX = layout.panelRight - state.panelWidth / 2;
+  let leftVisiblePanelX =
+    layout.optionsLayout.x - layout.optionsLayout.panelWidth / 2 +
+    state.panelWidth / 2;
+  let rightVisiblePanelX =
+    layout.optionsLayout.x + layout.optionsLayout.panelWidth / 2 -
+    state.panelWidth / 2;
+  let visiblePanelX = lerp(
+    leftVisiblePanelX,
+    rightVisiblePanelX,
+    layout.sideMix,
+  );
+  let hiddenPanelX = lerp(
+    -width / 2 - state.panelWidth / 2,
+    width / 2 + state.panelWidth / 2,
+    layout.sideMix,
+  );
+  let panelX = lerp(
+    hiddenPanelX,
+    visiblePanelX,
+    state.position,
+  );
   state.panelBounds = {
     x: panelX,
-    y: 0,
+    y: layout.y,
     w: state.panelWidth,
     h: state.panelHeight,
   };
@@ -314,7 +353,7 @@ function drawLayerBar() {
   );
   scene.gui.layerPanel.surface(
     panelX,
-    0,
+    layout.y,
     state.panelWidth,
     state.panelHeight,
     scene.ui.button.radius * scene.ui.scale,
@@ -325,9 +364,24 @@ function drawLayerBar() {
   resetShader();
   translate(0, 0, 48);
   noStroke();
+  fill(255, 255 * state.position);
+  textFont(scene.font);
+  textAlign(layout.sideMix < 0.5 ? LEFT : RIGHT, CENTER);
+  textSize(44 * scene.ui.scale);
+  text(
+    "Layer",
+    lerp(
+      panelX - state.panelWidth / 2 + layout.panelPadding,
+      panelX + state.panelWidth / 2 - layout.panelPadding,
+      layout.sideMix,
+    ),
+    layout.y - state.panelHeight / 2 + layout.headerHeight / 2 -
+      6 * scene.ui.scale,
+  );
   rectMode(CENTER);
   for (let i = 0; i < layout.order.length; i++) {
     let key = layout.order[i];
+    let item = layerItemForKey(key);
     let selected = key == state.selectedKey;
     let targetWidth = selected ? layout.selectedWidth : layout.normalWidth;
     let targetY = layout.top + i * layout.lineGap;
@@ -339,8 +393,22 @@ function drawLayerBar() {
       : animateData(currentY, targetY, 0.4);
     state.widths[key] = currentWidth;
     state.positions[key] = currentY;
-    fill(255, selected ? 245 : 165);
-    let lineX = layout.lineRight - currentWidth / 2;
+    let layerRgb = item?.type == "word"
+      ? textureMixRgbValues(textureMixForWordIndex(item.wordIndex))
+      : [0.2, 0.2, 0.2];
+    fill(
+      layerRgb[0] * 255,
+      layerRgb[1] * 255,
+      layerRgb[2] * 255,
+      selected ? 245 : 185,
+    );
+    let leftLineX =
+      panelX - state.panelWidth / 2 +
+      layout.panelPadding + currentWidth / 2;
+    let rightLineX =
+      panelX + state.panelWidth / 2 -
+      layout.panelPadding - currentWidth / 2;
+    let lineX = lerp(leftLineX, rightLineX, layout.sideMix);
     rect(
       lineX,
       currentY,

@@ -105,10 +105,7 @@ function sessionPhotoFrameLength() {
 
 function appendSessionPhotoFramePoint(x, y, force = false) {
   let frame = scene.session.photoFrame;
-  let point = createVector(
-    constrain(x, 0, width),
-    constrain(y, 0, height),
-  );
+  let point = constrainPointToComposition(x, y);
   let previous = frame.points[frame.points.length - 1];
   let minimumDistance = frame.sampleDistance * scene.ui.scale;
   if (
@@ -129,6 +126,7 @@ function beginPhotoFrameGesture() {
   ) {
     return false;
   }
+  if (!pointInsideComposition(mouseX, mouseY)) return true;
 
   let frame = scene.session.photoFrame;
   frame.drawing = true;
@@ -251,7 +249,6 @@ function acceptSessionPhotoFrame() {
   let frame = scene.session.photoFrame;
   if (scene.session.mode != "frame" || !frame.closed) return;
   scene.session.mode = "active";
-  scene.ui.colorPanel.detent = 1;
   scene.ui.pointer.pressTarget = null;
   scene.ui.pointer.pressStartedOnButton = false;
   setTextEdit(true);
@@ -597,10 +594,7 @@ function drawSessionPhotoFrameOutline(target, alpha = 255, layerZ = 0) {
 }
 
 function sessionPhotoFrameStrokeRgb() {
-  if (scene.session.mode == "frame") return [255, 255, 255];
-
-  let background = hsvToRgbValues(scene.session.backgroundColor);
-  return background.map((channel) => (1 - channel) * 255);
+  return [255, 255, 255];
 }
 
 function sessionPhotoFrameSecondaryStrokeRgb() {
@@ -707,11 +701,11 @@ function drawPhotoFrameStage() {
   fill(255, 255 * transition);
   textFont(scene.font);
   textAlign(CENTER, CENTER);
-  textSize(48 * scale);
+  textSize(titleHeight / 1.5);
   text(
     frame.closed ? "Review Your Frame" : "Draw Your Frame",
     0,
-    titleY - titleHeight / 14,
+    titleY - titleHeight / 10,
   );
 
   let points = frame.points;

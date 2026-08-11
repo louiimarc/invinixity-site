@@ -2,8 +2,22 @@ function requestPrintPreview() {
   scene.ui.printPreview.pending = true;
 }
 
-function cardPreviewSnapshot(image, maximumDimension = 768) {
-  let snapshot = image.get();
+function cardPreviewSnapshot(image, fullResolution = false) {
+  let bounds = compositionBounds();
+  let scaleX = image.width / width;
+  let scaleY = image.height / height;
+  let snapshot = image.get(
+    round(bounds.x * scaleX),
+    round(bounds.y * scaleY),
+    max(1, round(bounds.width * scaleX)),
+    max(1, round(bounds.height * scaleY)),
+  );
+  if (fullResolution) {
+    snapshot.resize(scene.composition.width, scene.composition.height);
+    return snapshot;
+  }
+
+  let maximumDimension = 768;
   let largestDimension = max(snapshot.width, snapshot.height);
   if (largestDimension > maximumDimension) {
     let scale = maximumDimension / largestDimension;
@@ -39,22 +53,26 @@ function clearCardPreviewCaptureBuffer(buffer) {
 function captureCardPreviewLayers(liveBaseSnapshot) {
   let state = scene.ui.printPreview;
   let originalWorkspace = scene.workspace;
-  let originalGrainShader = scene.grainShader;
   let captureBuffer = setupCardPreviewCaptureBuffer();
   let baseSnapshot = null;
   let layers = [];
 
   try {
     scene.workspace = captureBuffer;
-    scene.grainShader = originalGrainShader.copyToContext(captureBuffer);
     clearCardPreviewCaptureBuffer(captureBuffer);
     captureBuffer.push();
     captureBuffer.resetMatrix();
     captureBuffer.imageMode(CENTER);
-    captureBuffer.image(liveBaseSnapshot, 0, 0, width, height);
+    let bounds = compositionBounds();
+    captureBuffer.image(
+      liveBaseSnapshot,
+      0,
+      0,
+      bounds.width,
+      bounds.height,
+    );
     captureBuffer.pop();
-    drawGrainFinish(captureBuffer);
-    baseSnapshot = cardPreviewSnapshot(captureBuffer);
+    baseSnapshot = cardPreviewSnapshot(captureBuffer, true);
 
     let baseTextSize = min(width, height) / 4;
     let order = syncLayerOrder();
@@ -81,9 +99,16 @@ function captureCardPreviewLayers(liveBaseSnapshot) {
         snapshot: cardPreviewSnapshot(captureBuffer),
       });
     }
+
+    clearCardPreviewCaptureBuffer(captureBuffer);
+    drawFrameOverlay(captureBuffer, 0);
+    layers.push({
+      key: "frame-overlay",
+      type: "overlay",
+      snapshot: cardPreviewSnapshot(captureBuffer),
+    });
   } finally {
     scene.workspace = originalWorkspace;
-    scene.grainShader = originalGrainShader;
     captureBuffer.remove();
   }
 
@@ -108,6 +133,7 @@ function capturePrintPreview(liveBaseSnapshot) {
   state.rotation.y = 0;
   state.velocity.x = 0;
   state.velocity.y = 0;
+  state.snap.active = false;
 }
 
 function closePrintPreview(completeSession = false) {
@@ -117,6 +143,7 @@ function closePrintPreview(completeSession = false) {
   state.introSpin.active = false;
   state.completeSession = state.completeSession || completeSession;
   state.drag.active = false;
+  state.snap.active = false;
   scene.ui.pointer.pressTarget = null;
   scene.ui.pointer.pressStartedOnButton = false;
 }
@@ -124,6 +151,7 @@ function closePrintPreview(completeSession = false) {
 function beginPrintPreviewDrag() {
   let state = scene.ui.printPreview;
   state.introSpin.active = false;
+  state.snap.active = false;
   state.drag.active = true;
   state.drag.moved = false;
   state.drag.lastX = mouseX;
@@ -194,11 +222,37 @@ function updatePrintPreviewInertia() {
       state.introSpin.active = false;
       state.rotation.x = 0;
       state.rotation.y = 360;
+      state.snap.active = false;
     }
     return;
   }
 
   let elapsed = min(deltaTime / 1000, 0.05);
+  if (state.snap.active) {
+    let smooth = 1 - pow(1 - state.snap.smooth, elapsed * 60);
+    state.rotation.x = lerp(
+      state.rotation.x,
+      state.snap.targetX,
+      smooth,
+    );
+    state.rotation.y = lerp(
+      state.rotation.y,
+      state.snap.targetY,
+      smooth,
+    );
+
+    if (
+      abs(state.rotation.x - state.snap.targetX) < 0.1 &&
+      abs(state.rotation.y - state.snap.targetY) < 0.1
+    ) {
+      let backFacing = abs(round(state.snap.targetY / 180)) % 2 == 1;
+      state.rotation.x = 0;
+      state.rotation.y = backFacing ? 180 : 0;
+      state.snap.active = false;
+    }
+    return;
+  }
+
   state.rotation.x += state.velocity.x * elapsed;
   state.rotation.y += state.velocity.y * elapsed;
   let damping = pow(0.985, elapsed * 60);
@@ -207,19 +261,37 @@ function updatePrintPreviewInertia() {
 
   if (abs(state.velocity.x) < 0.01) state.velocity.x = 0;
   if (abs(state.velocity.y) < 0.01) state.velocity.y = 0;
+
+  if (
+    Math.hypot(state.velocity.x, state.velocity.y) <
+    state.snap.velocityThreshold
+  ) {
+    state.velocity.x = 0;
+    state.velocity.y = 0;
+    state.snap.targetX = round(state.rotation.x / 360) * 360;
+    state.snap.targetY = round(state.rotation.y / 180) * 180;
+    state.snap.active = true;
+  }
 }
 
-function drawCardPreviewSticker(snapshot, widthValue, heightValue, depth) {
+function drawCardPreviewStickerShadow(
+  snapshot,
+  widthValue,
+  heightValue,
+  shadowDepth,
+) {
   push();
-  translate(2, 3, depth - 1.25);
+  translate(2, 3, shadowDepth);
   noStroke();
-  tint(0, 62);
+  tint(0, 55);
   textureMode(NORMAL);
   texture(snapshot);
   plane(widthValue, heightValue);
   noTint();
   pop();
+}
 
+function drawCardPreviewSticker(snapshot, widthValue, heightValue, depth) {
   push();
   translate(0, 0, depth);
   noStroke();
@@ -241,6 +313,13 @@ function drawPrintPreviewPlane(
   let state = scene.ui.printPreview;
   let frontFacing =
     cos(state.rotation.x) * cos(state.rotation.y) >= 0;
+  let paperRadius = min(paperWidth, paperHeight) *
+    scene.composition.cornerRadius;
+  let contentInset = max(
+    (paperWidth - contentWidth) / 2,
+    (paperHeight - contentHeight) / 2,
+  );
+  let contentRadius = max(0, paperRadius - contentInset);
 
   push();
   translate(0, planeY, 0);
@@ -249,16 +328,26 @@ function drawPrintPreviewPlane(
   noStroke();
 
   if (frontFacing) {
+    let cardSurfaceDepth = 0.75;
     fill(255);
-    plane(paperWidth, paperHeight);
-    translate(0, 0, 0.75);
+    rectMode(CENTER);
+    rect(0, 0, paperWidth, paperHeight, paperRadius);
+    translate(0, 0, cardSurfaceDepth);
     textureMode(NORMAL);
     texture(snapshot);
-    plane(contentWidth, contentHeight);
-    let layerGap = min(
-      state.depthGap,
-      64 / max(1, layers.length),
-    );
+    rect(0, 0, contentWidth, contentHeight, contentRadius);
+    let layerGap = state.depthTotal / max(1, layers.length);
+    _renderer.GL.depthMask(false);
+    for (let index = 0; index < layers.length; index++) {
+      if (layers[index].type == "overlay") continue;
+      drawCardPreviewStickerShadow(
+        layers[index].snapshot,
+        contentWidth,
+        contentHeight,
+        0.01,
+      );
+    }
+    _renderer.GL.depthMask(true);
     for (let index = 0; index < layers.length; index++) {
       drawCardPreviewSticker(
         layers[index].snapshot,
@@ -269,7 +358,8 @@ function drawPrintPreviewPlane(
     }
   } else {
     fill(200);
-    plane(paperWidth, paperHeight);
+    rectMode(CENTER);
+    rect(0, 0, paperWidth, paperHeight, paperRadius);
     push();
     translate(0, 0, -0.75);
     rotateY(180);

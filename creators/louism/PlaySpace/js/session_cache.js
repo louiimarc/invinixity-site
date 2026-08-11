@@ -72,6 +72,7 @@ async function saveSessionCache() {
     photoHeight: photo.height,
     canvasWidth: width,
     canvasHeight: height,
+    compositionVersion: 1,
     frameClosed: frame.closed,
     framePoints: frame.points.map((point) => ({ x: point.x, y: point.y })),
     updatedAt: Date.now(),
@@ -144,8 +145,22 @@ async function restoreSessionCache() {
     sessionCachePhotoBlob = record.photo;
     sessionCachePhotoChanged = false;
 
-    let scaleX = width / max(1, record.canvasWidth || width);
-    let scaleY = height / max(1, record.canvasHeight || height);
+    let storedWidth = max(1, record.canvasWidth || width);
+    let storedHeight = max(1, record.canvasHeight || height);
+    let fromBounds = record.compositionVersion === 1
+      ? compositionBounds(
+        storedWidth,
+        storedHeight,
+        scene.ui.controlSide,
+        scene.text.edit,
+      )
+      : { x: 0, y: 0, width: storedWidth, height: storedHeight };
+    let toBounds = compositionBounds(
+      width,
+      height,
+      scene.ui.controlSide,
+      scene.text.edit,
+    );
     let frame = scene.session.photoFrame;
     frame.points = Array.isArray(record.framePoints)
       ? record.framePoints
@@ -155,7 +170,7 @@ async function restoreSessionCache() {
               Number.isFinite(point.x) &&
               Number.isFinite(point.y),
           )
-          .map((point) => createVector(point.x * scaleX, point.y * scaleY))
+          .map((point) => remapPointBetweenBounds(point, fromBounds, toBounds))
       : [];
     frame.closed = record.frameClosed === true && frame.points.length > 2;
     frame.drawing = false;

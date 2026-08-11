@@ -10,16 +10,13 @@ u_toggle,
 u_axis,
 u_pointer,
 u_gradient,
-u_white_backdrop,
-u_overlay_enabled;
+u_white_backdrop;
 
 uniform vec2
 u_resolution,
 u_mouse,
 u_gradient_center,
-u_gradient_size,
-u_overlay_center,
-u_overlay_size;
+u_gradient_size;
 
 uniform vec3
 u_dimension,
@@ -33,8 +30,7 @@ uniform float u_gradient_radius;
 
 uniform sampler2D
 spectrum,
-texture0,
-texture1;
+texture0;
 
 varying vec2 vTexCoord;
 varying vec3 vNormal;
@@ -551,19 +547,9 @@ void main() {
         col.rgb *= mix(sliderColor, toggleColor, step(0.001, u_toggle));
     }
 
-    vec2 overlaySize = max(u_overlay_size, vec2(1.0e-5));
-    vec2 overlayUv = (UV - u_overlay_center) / overlaySize + 0.5;
-    float overlayBounds =
-        step(0.0, overlayUv.x) * step(overlayUv.x, 1.0) *
-        step(0.0, overlayUv.y) * step(overlayUv.y, 1.0);
-    vec4 overlayColor = texture2D(texture1, clamp(overlayUv, 0.0, 1.0));
-    float overlayAmount =
-        overlayColor.a * overlayBounds * u_overlay_enabled;
-    col.rgb = mix(col.rgb, overlayColor.rgb, overlayAmount);
-
     col.xyz = rgb2hsv(col.rgb);
     col.z += smoothstep(-0.25, 2.0, d) / 4.0 - 3e-2;
-    col.z /= 1.25;
+    col.z *= 0.8;
     col.rgb = hsv2rgb(col.xyz);
     col.rgb = softLight(col, vec4(vec3(max(hsv2rgb(vec3(atan(uv.y, uv.x) / TAU, d * d / 2.0, 1.0)) * smoothstep(0.8, 0.0, length((ST - (UV * 2.0 - 1.0) * vec2(1.0, -1.0) * d) - mo * vec2(1.0, -1.0))) * u_pointer, 0.5)), 1.0)).rgb;
     col.rgb = mix(col.rgb, texture2D(texture0, st).rgb, smoothstep(0.8, 1.0, d));

@@ -10,6 +10,8 @@ class GraphicalUserInterface {
   #width = 0.0;
   #press = 0.0;
   #labelBuffer = null;
+  #labelCacheKey = null;
+  #selectionAnimating = false;
   #selectionBox = { x: 0, width: 0, alpha: 0 };
 
   constructor(label = "", texture, shader) {
@@ -122,6 +124,47 @@ class GraphicalUserInterface {
     return `rgba(${rgb[0] * 255}, ${rgb[1] * 255}, ${rgb[2] * 255}, ${opacity})`;
   }
 
+  #labelStateKey(w, h) {
+    let serializeArray = (values) =>
+      values?.map((value) =>
+        typeof value == "object"
+          ? `${value?.x ?? ""},${value?.y ?? ""}`
+          : value,
+      ).join(",") ?? "";
+    let selection = this.selection;
+    let selectionStops = selection?.colorStops?.map((stop) => {
+      let color = stop.color || {};
+      return [
+        stop.offset,
+        color.hue,
+        color.saturation,
+        color.brightness,
+        color.opacity,
+      ].join(",");
+    }).join(";") ?? "";
+
+    return [
+      ceil(w),
+      ceil(h),
+      this.label,
+      this.valueVisible ? this.#valueLabel() : "",
+      serializeArray(this.labelOpacity),
+      serializeArray(this.labelScales),
+      serializeArray(this.labelRotations),
+      serializeArray(this.labelOffsets),
+      this.marks.top,
+      this.marks.right,
+      this.marks.bottom,
+      this.marks.left,
+      selection?.start ?? "",
+      selection?.end ?? "",
+      selection?.caret ?? "",
+      selection?.gradientStart ?? "",
+      selection?.gradientEnd ?? "",
+      selectionStops,
+    ].join("|");
+  }
+
   #draw(x, y, w, h, r, drawLabel = true) {
     let drawY = y + this.pressNudge * this.#press;
     let origin =
@@ -190,6 +233,7 @@ class GraphicalUserInterface {
   #drawLabel(w, h) {
     let bufferWidth = max(1, ceil(w));
     let bufferHeight = max(1, ceil(h));
+    let resized = false;
 
     if (
       this.#labelBuffer == null ||
@@ -198,6 +242,18 @@ class GraphicalUserInterface {
     ) {
       this.#labelBuffer = createGraphics(bufferWidth, bufferHeight);
       this.#labelBuffer.pixelDensity(1);
+      resized = true;
+    }
+
+    let labelCacheKey = this.#labelStateKey(w, h);
+    if (
+      !resized &&
+      labelCacheKey == this.#labelCacheKey &&
+      !this.#selectionAnimating
+    ) {
+      imageMode(CENTER);
+      image(this.#labelBuffer, 0, 0, w, h);
+      return;
     }
 
     this.#labelBuffer.clear();
@@ -211,6 +267,11 @@ class GraphicalUserInterface {
     );
     let labelWidth = characterWidths.reduce((sum, value) => sum + value, 0);
     let labelLeft = bufferWidth / 2 - labelWidth / 2;
+    let selectionTarget = {
+      x: this.#selectionBox.x,
+      width: this.#selectionBox.width,
+      alpha: 0,
+    };
 
     if (this.selection != null) {
       let selectionX =
@@ -227,6 +288,7 @@ class GraphicalUserInterface {
       let targetX = this.selection.caret
         ? selectionX - targetWidth / 2
         : selectionX - 2;
+      selectionTarget = { x: targetX, width: targetWidth, alpha: 1 };
 
       if (this.#selectionBox.alpha < 0.01) {
         this.#selectionBox.x = targetX;
@@ -243,6 +305,11 @@ class GraphicalUserInterface {
     } else {
       this.#selectionBox.alpha = animateData(this.#selectionBox.alpha, 0, 0.5);
     }
+
+    this.#selectionAnimating =
+      abs(this.#selectionBox.x - selectionTarget.x) > 0.1 ||
+      abs(this.#selectionBox.width - selectionTarget.width) > 0.1 ||
+      abs(this.#selectionBox.alpha - selectionTarget.alpha) > 0.01;
 
     if (this.#selectionBox.alpha > 0.01) {
       let context = this.#labelBuffer.drawingContext;
@@ -341,6 +408,7 @@ class GraphicalUserInterface {
     }
 
     this.#drawMarks(this.#labelBuffer, w, h);
+    this.#labelCacheKey = labelCacheKey;
 
     imageMode(CENTER);
     image(this.#labelBuffer, 0, 0, w, h);

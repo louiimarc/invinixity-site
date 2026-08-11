@@ -8,7 +8,7 @@ function openSessionCameraPrompt() {
   let prompt = scene.session.cameraPrompt;
   if (!scene.text.hasSavedSession) clearTextMemory();
   resetSessionPhotoFrame();
-  resetSessionBackgroundColor();
+  resetSessionBackgroundColor(true);
   resetSessionFaceDetection();
   scene.session.photo = null;
   scene.session.camera.nextTransition = 0;

@@ -8,22 +8,35 @@ var scene = {
       content: 256,
       ui: 512,
     },
+    composition: {
+      width: 1080,
+      height: 1350,
+      fitScale: 0.8,
+      safeInset: 0.08,
+      cornerRadius: 0.05,
+      tintBuffer: null,
+      tintKey: "",
+      controlPanelWidth: null,
+    },
     checkerboard: {
       buffer: null,
       width: 0,
       height: 0,
     },
-    grain: {
-      tile: null,
-      tileSize: 64,
-      grainSize: 3.5,
-      opacity: 0.05,
-      drift: { x: 0.0035, y: -0.0025 },
-    },
-    backgroundEntityAssets: {
-      textures: [],
-      textureSize: 512,
-      animatedPlacements: [],
+    frameOverlay: {
+      paletteHexes: [
+        "F79D1F",
+        "CDDD46",
+        "DBDCDA",
+        "7BCBBB",
+        "C1BEDF",
+        "4D1430",
+      ],
+      darkForegroundBackgrounds: ["DBDCDA", "7BCBBB", "CDDD46"],
+      sourcePath: "assets/frame_overlay/foreground.svg",
+      artwork: null,
+      textMask: null,
+      foregroundMix: 0,
     },
     debug: {
       guides: false,
@@ -41,11 +54,7 @@ var scene = {
       backgroundColor: {
         hue: 0,
         saturation: 0,
-        brightness: 0.2,
-      },
-      backgroundEntities: {
-        seed: 0,
-        placements: [],
+        brightness: 0.5,
       },
       cameraPrompt: {
         open: false,
@@ -122,57 +131,293 @@ var scene = {
     animate: 0,
   };
 
-let demo = false;
+function compositionBounds(
+  viewWidth = width,
+  viewHeight = height,
+  controlSide = scene.ui?.controlSide ?? "right",
+  alignToControls =
+    scene.session?.mode == "active" && scene.text?.edit == true,
+  controlMix = scene.ui?.controlSideMix ??
+    (controlSide == "left" ? 0 : 1),
+  controlPanelWidth = null,
+) {
+  let scale = min(
+    viewWidth / scene.composition.width,
+    viewHeight / scene.composition.height,
+  ) * scene.composition.fitScale;
+  let boundsWidth = scene.composition.width * scale;
+  let boundsHeight = scene.composition.height * scale;
+  let gutterWidth = max(0, viewWidth - boundsWidth);
+  let referenceScale = constrain(
+    min(viewWidth / 1280, viewHeight / 720),
+    0.75,
+    1.35,
+  );
+  let sidePadding = min(gutterWidth / 2, 34 * referenceScale);
+  let centeredX = (viewWidth - boundsWidth) / 2;
+  let fallbackControlPanelWidth = min(
+    viewWidth * 0.42,
+    386 * referenceScale,
+  );
+  if (controlPanelWidth == null) {
+    let usesCurrentViewport = viewWidth == width && viewHeight == height;
+    controlPanelWidth = usesCurrentViewport &&
+      Number.isFinite(scene.composition.controlPanelWidth)
+      ? scene.composition.controlPanelWidth
+      : fallbackControlPanelWidth;
+  }
+  let controlInnerEdge =
+    viewWidth - sidePadding - controlPanelWidth;
+  let leftAlignedX = max(
+    sidePadding,
+    (controlInnerEdge - boundsWidth) / 2,
+  );
+  let rightAlignedX = viewWidth - boundsWidth - leftAlignedX;
+  return {
+    x: alignToControls
+      ? lerp(rightAlignedX, leftAlignedX, controlMix)
+      : centeredX,
+    y: (viewHeight - boundsHeight) / 2,
+    width: boundsWidth,
+    height: boundsHeight,
+    scale,
+  };
+}
+
+function controlsOnRight() {
+  return scene.ui.controlSide != "left";
+}
+
+function controlSideMix() {
+  return constrain(scene.ui.controlSideMix, 0, 1);
+}
+
+function remapArtworkBetweenBounds(from, to) {
+  let frame = scene.session.photoFrame;
+  let framePaths = [
+    frame.points,
+    frame.faceAdjustment?.source,
+    frame.faceAdjustment?.target,
+  ];
+  let remappedFramePaths = new Set();
+  for (let path of framePaths) {
+    if (!Array.isArray(path) || remappedFramePaths.has(path)) continue;
+    remappedFramePaths.add(path);
+    for (let point of path) {
+      let mapped = remapPointBetweenBounds(point, from, to);
+      point.x = mapped.x;
+      point.y = mapped.y;
+    }
+  }
+  if (frame.points.length > 0) {
+    frame.dirty = true;
+  }
+  for (let path of Object.values(scene.text.paths)) {
+    if (!Array.isArray(path)) continue;
+    for (let point of path) {
+      let mapped = remapPointBetweenBounds(point, from, to);
+      point.x = mapped.x;
+      point.y = mapped.y;
+    }
+  }
+}
+
+function compositionSafeBounds(insetRatio = scene.composition.safeInset) {
+  let bounds = compositionBounds();
+  let inset = min(bounds.width, bounds.height) * insetRatio;
+  return {
+    x: bounds.x + inset,
+    y: bounds.y + inset,
+    width: max(1, bounds.width - inset * 2),
+    height: max(1, bounds.height - inset * 2),
+  };
+}
+
+function compositionCornerRadius(bounds = compositionBounds()) {
+  return min(bounds.width, bounds.height) * scene.composition.cornerRadius;
+}
+
+function pointInsideComposition(x, y, safe = false) {
+  let bounds = safe ? compositionSafeBounds() : compositionBounds();
+  return (
+    x >= bounds.x &&
+    x <= bounds.x + bounds.width &&
+    y >= bounds.y &&
+    y <= bounds.y + bounds.height
+  );
+}
+
+function constrainPointToComposition(x, y, safe = false) {
+  let bounds = safe ? compositionSafeBounds() : compositionBounds();
+  return createVector(
+    constrain(x, bounds.x, bounds.x + bounds.width),
+    constrain(y, bounds.y, bounds.y + bounds.height),
+  );
+}
+
+function remapPointBetweenBounds(point, from, to) {
+  return createVector(
+    to.x + ((point.x - from.x) / max(1, from.width)) * to.width,
+    to.y + ((point.y - from.y) / max(1, from.height)) * to.height,
+  );
+}
+
+function remapArtworkToComposition(
+  fromWidth,
+  fromHeight,
+  fromComposition = true,
+) {
+  if (!(fromWidth > 0 && fromHeight > 0)) return;
+  let from = fromComposition
+    ? compositionBounds(fromWidth, fromHeight)
+    : { x: 0, y: 0, width: fromWidth, height: fromHeight };
+  let to = compositionBounds();
+
+  remapArtworkBetweenBounds(from, to);
+}
+
+function loadControlSidePreference() {
+  try {
+    let saved = localStorage.getItem("playspace.control-side.v1");
+    if (["left", "right"].includes(saved)) scene.ui.controlSide = saved;
+    scene.ui.controlSideMix = controlsOnRight() ? 1 : 0;
+  } catch (error) {
+    console.warn("Unable to load control-side preference", error);
+  }
+}
+
+function toggleControlSide() {
+  scene.ui.controlSide = controlsOnRight() ? "left" : "right";
+  scene.ui.controlSideSavePending = true;
+}
+
+function updateControlSideTransition() {
+  let target = controlsOnRight() ? 1 : 0;
+  let current = controlSideMix();
+  if (abs(current - target) < 0.0005) {
+    if (current != target) {
+      let from = compositionBounds(
+        width,
+        height,
+        scene.ui.controlSide,
+        scene.text.edit,
+        current,
+      );
+      let to = compositionBounds(
+        width,
+        height,
+        scene.ui.controlSide,
+        scene.text.edit,
+        target,
+      );
+      if (scene.text.edit) remapArtworkBetweenBounds(from, to);
+      scene.ui.controlSideMix = target;
+    }
+    if (scene.ui.controlSideSavePending) {
+      scene.ui.controlSideSavePending = false;
+      try {
+        localStorage.setItem(
+          "playspace.control-side.v1",
+          scene.ui.controlSide,
+        );
+      } catch (error) {
+        console.warn("Unable to save control-side preference", error);
+      }
+      saveTextMemory();
+      scheduleSessionCacheSave();
+    }
+    return;
+  }
+
+  let next = animateData(current, target, 0.18);
+  let from = compositionBounds(
+    width,
+    height,
+    scene.ui.controlSide,
+    scene.text.edit,
+    current,
+  );
+  let to = compositionBounds(
+    width,
+    height,
+    scene.ui.controlSide,
+    scene.text.edit,
+    next,
+  );
+  if (scene.text.edit) remapArtworkBetweenBounds(from, to);
+  scene.ui.controlSideMix = next;
+}
+
+function hsvToRgbValues(color) {
+  let h = ((color.hue % 1) + 1) % 1;
+  let s = constrain(color.saturation, 0, 1);
+  let v = constrain(color.brightness, 0, 1);
+  let sector = h * 6;
+  let chroma = v * s;
+  let x = chroma * (1 - abs((sector % 2) - 1));
+  let rgb;
+
+  if (sector < 1) rgb = [chroma, x, 0];
+  else if (sector < 2) rgb = [x, chroma, 0];
+  else if (sector < 3) rgb = [0, chroma, x];
+  else if (sector < 4) rgb = [0, x, chroma];
+  else if (sector < 5) rgb = [x, 0, chroma];
+  else rgb = [chroma, 0, x];
+
+  let match = v - chroma;
+  return rgb.map((channel) => channel + match);
+}
+
+function rgbToHsvValues(rgb, fallbackHue = 0) {
+  let r = constrain(rgb[0], 0, 1);
+  let g = constrain(rgb[1], 0, 1);
+  let b = constrain(rgb[2], 0, 1);
+  let maximum = max(r, g, b);
+  let minimum = min(r, g, b);
+  let delta = maximum - minimum;
+  let hue = fallbackHue;
+
+  if (delta > 0.00001) {
+    if (maximum == r) hue = ((g - b) / delta) % 6;
+    else if (maximum == g) hue = (b - r) / delta + 2;
+    else hue = (r - g) / delta + 4;
+    hue = ((hue / 6) % 1 + 1) % 1;
+  }
+
+  return {
+    hue,
+    saturation: maximum == 0 ? 0 : delta / maximum,
+    brightness: maximum,
+  };
+}
 
 scene.text = {
   edit: false,
   font: null,
-  svg: {
-    sources: {},
-    glyphs: {},
-    buffers: {},
-    viewBoxSize: 1024,
-    edgeAmount: 10,
-    edgeFrequency: 0.055,
-    edgeDetailFrequency: 0.14,
-    edgeSpeed: 0.75,
-    curveStep: 12,
-  },
   buffer: "",
   input: null,
   maxCharacters: 24,
+  maxWords: 6,
   activeWord: -1,
   pathEditArmed: false,
   selectionOverride: null,
   storageKey: "playspace.text.v1",
   hasSavedSession: false,
   textureMixes: Object.create(null),
-  textureAssets: {
-    images: [],
-    buffers: {},
-    mixBuffers: {},
-    mixKeys: {},
-    borderBuffers: {},
-    textureSize: 512,
+  glyphAssets: {
+    entries: [],
+    byGroup: Object.create(null),
+    byCharacter: Object.create(null),
   },
   layerOrder: ["photo"],
-  glyphCache: {},
   boil: {
     enabled: true,
-    mode: "filled",
     pathAmount: 4,
     pathWaveAmount: 22.5,
     pathWaveFrequency: 0.025,
-    glyphAmount: 0,
-    glyphAngle: 0,
-    glyphScale: 0,
     touchGrowAmount: 0.55,
     touchGrowRadius: 120,
-    filledCopies: 1,
     speed: 1.8,
-    sampleFactor: 0.18,
-    simplifyThreshold: 0,
-    lineMaxDistance: 28,
   },
   cursor: {
     pos: 0,
@@ -203,6 +448,9 @@ scene.content = {
 };
 
 scene.ui = {
+  controlSide: "right",
+  controlSideMix: 1,
+  controlSideSavePending: false,
   base: {
     width: 1280,
     height: 720,
@@ -223,37 +471,57 @@ scene.ui = {
   controls: {
     position: 0,
   },
+  sideSwitch: {
+    position: 0,
+  },
   colorPanel: {
     position: 0,
-    detent: 1,
-    height: 0,
-    dragging: false,
-    dragStartY: 0,
-    dragStartHeight: 0,
-    dragMoved: false,
     bounds: null,
-    pickerScale: {
-      hue: 1,
-      saturationBrightness: 1,
+    color: {
+      hue: 0,
+      saturation: 0,
+      brightness: 0.5,
     },
-    displayColor: null,
     wheelTexture: null,
     wheelTextureResolution: 0,
+    wheelTextureRotation: null,
     wheelTextureHue: null,
+    wheelTextureDiskMorph: null,
+    wheelRotation: 0.25,
+    wheelVelocity: 0,
+    wheelDragging: false,
+    wheelLastTurn: 0,
+    wheelLastTime: 0,
+    wheelUpdateTime: 0,
+    wheelSnapActive: false,
+    wheelSnapTarget: 0,
+    wheelSnapIndex: 0,
+    wheelSettled: true,
+    wheelDiskMorph: 1,
+    wheelDiskMorphIndex: 0,
+    wheelShadowAngle: Math.PI / 2,
+    selectedPaletteIndex: null,
+    previousSessionPaletteIndex: null,
   },
   texturePad: {
     position: 0,
     bounds: null,
     active: false,
+    detent: 1,
+    progress: 1,
     resize: 1,
     resizing: false,
+    resizeMoved: false,
     resizeStartX: 0,
     resizeStartY: 0,
-    resizeStartValue: 1,
+    resizeStartProgress: 1,
+    titleWidth: 0,
+    titleWidthScale: 0,
     dotScales: [],
     previewMix: null,
   },
   layerBar: {
+    position: 0,
     selectedKey: null,
     dragging: false,
     dragOffsetY: 0,
@@ -270,7 +538,7 @@ scene.ui = {
     pending: false,
     snapshot: null,
     layers: [],
-    depthGap: 8,
+    depthTotal: 28,
     transition: 0,
     transitionTarget: 0,
     closing: false,
@@ -282,6 +550,13 @@ scene.ui = {
     },
     rotation: { x: 0, y: 0 },
     velocity: { x: 0, y: 0 },
+    snap: {
+      active: false,
+      targetX: 0,
+      targetY: 0,
+      velocityThreshold: 28,
+      smooth: 0.12,
+    },
     drag: {
       active: false,
       moved: false,
@@ -388,11 +663,6 @@ function uiButtonBounds(side = "left") {
   return { x, y, w, h, r };
 }
 
-function sliderValueFromPointer(bounds, pointerY = mouseY) {
-  let y = pointerY - height / 2;
-  return constrain(1 - (y - (bounds.y - bounds.h / 2)) / bounds.h, 0, 1);
-}
-
 function horizontalSliderValueFromPointer(bounds, pointerX = mouseX) {
   let x = pointerX - width / 2;
   return constrain((x - (bounds.x - bounds.w / 2)) / bounds.w, 0, 1);
@@ -402,16 +672,6 @@ function setTextScaleValue(value) {
   let entry = textWordEntries()[scene.text.activeWord];
   if (entry == null) return;
   scene.text.sizes[entry.key] = constrain(value, 0, 1);
-  saveTextMemory();
-}
-
-function setTextColorValue(channel, value) {
-  let color = scene.session.backgroundColor;
-  if (!(channel in color)) return;
-  scene.session.backgroundColor = {
-    ...color,
-    [channel]: constrain(value, 0, 1),
-  };
   saveTextMemory();
 }
 
@@ -438,13 +698,27 @@ function currentColumn() {
 function cleanTextInput(value) {
   let cleaned = "";
   let characterCount = 0;
+  let wordCount = 0;
+  let insideWord = false;
 
   for (let character of value) {
     if (/\s/u.test(character)) {
-      if (cleaned != "" && !cleaned.endsWith(" ")) cleaned += " ";
+      if (
+        cleaned != "" &&
+        !cleaned.endsWith(" ") &&
+        wordCount < scene.text.maxWords
+      ) {
+        cleaned += " ";
+      }
+      insideWord = false;
       continue;
     }
 
+    if (!insideWord) {
+      if (wordCount >= scene.text.maxWords) continue;
+      wordCount++;
+      insideWord = true;
+    }
     if (characterCount >= scene.text.maxCharacters) continue;
     cleaned += character;
     characterCount++;
@@ -617,6 +891,16 @@ function textFieldCursorFromPointer(pointerX = mouseX) {
 }
 
 function setTextEdit(value) {
+  let nextEdit = Boolean(value);
+  let editChanged = scene.text.edit != nextEdit;
+  let from = editChanged
+    ? compositionBounds(
+      width,
+      height,
+      scene.ui.controlSide,
+      scene.text.edit,
+    )
+    : null;
   if (!value) {
     let leadingSpaceCount = scene.text.buffer.length - scene.text.buffer.trimStart().length;
     scene.text.buffer = cleanTextInput(scene.text.buffer).trim();
@@ -627,7 +911,16 @@ function setTextEdit(value) {
     );
   }
 
-  scene.text.edit = value;
+  scene.text.edit = nextEdit;
+  if (editChanged) {
+    let to = compositionBounds(
+      width,
+      height,
+      scene.ui.controlSide,
+      scene.text.edit,
+    );
+    remapArtworkBetweenBounds(from, to);
+  }
   syncInputFromText();
 
   if (scene.text.input == null) return;
@@ -655,16 +948,13 @@ function saveTextMemory() {
       cursorPos: scene.text.cursor.pos,
       colors: { ...scene.text.colors },
       sizes: { ...scene.text.sizes },
-      backgroundColor: { ...scene.session.backgroundColor },
-      backgroundEntities: {
-        seed: scene.session.backgroundEntities.seed,
-        placements: scene.session.backgroundEntities.placements.map(
-          (placement) => ({ ...placement }),
-        ),
-      },
+      backgroundPaletteIndex: scene.ui.colorPanel.selectedPaletteIndex,
       textureMixes: { ...scene.text.textureMixes },
       layerOrder: [...scene.text.layerOrder],
       editing: scene.text.edit,
+      canvasWidth: width,
+      canvasHeight: height,
+      compositionVersion: 1,
       paths,
     };
     localStorage.setItem(scene.text.storageKey, JSON.stringify(memory));
@@ -691,22 +981,8 @@ function loadTextMemory() {
       scene.text.buffer.length,
     );
     scene.text.cursor.preferredColumn = currentColumn();
-    if (
-      memory.backgroundColor != null &&
-      typeof memory.backgroundColor == "object"
-    ) {
-      for (let channel of ["hue", "saturation", "brightness"]) {
-        if (Number.isFinite(memory.backgroundColor[channel])) {
-          scene.session.backgroundColor[channel] = constrain(
-            memory.backgroundColor[channel],
-            0,
-            1,
-          );
-        }
-      }
-    }
-    if (typeof loadStoredBackgroundEntities == "function") {
-      loadStoredBackgroundEntities(memory.backgroundEntities);
+    if (Number.isFinite(memory.backgroundPaletteIndex)) {
+      setSessionBackgroundPalette(memory.backgroundPaletteIndex, true);
     }
     scene.text.textureMixes = Object.create(null);
     if (memory.textureMixes != null && typeof memory.textureMixes == "object") {
@@ -779,6 +1055,29 @@ function loadTextMemory() {
         if (path != null) setTextPathForWordIndex(i, path);
       }
     }
+    if (memory.canvasWidth > 0 && memory.canvasHeight > 0) {
+      let storedEditing = memory.editing === true;
+      let from = memory.compositionVersion === 1
+        ? compositionBounds(
+          memory.canvasWidth,
+          memory.canvasHeight,
+          scene.ui.controlSide,
+          storedEditing,
+        )
+        : {
+          x: 0,
+          y: 0,
+          width: memory.canvasWidth,
+          height: memory.canvasHeight,
+        };
+      let to = compositionBounds(
+        width,
+        height,
+        scene.ui.controlSide,
+        storedEditing,
+      );
+      remapArtworkBetweenBounds(from, to);
+    }
     syncTextPathAssignments();
     scene.text.activeWord = firstWordWithoutPath();
     scene.text.pathEditArmed = scene.text.activeWord >= 0;
@@ -801,12 +1100,14 @@ function clearTextMemory() {
   scene.text.layerOrder = ["photo"];
   scene.ui.layerBar.selectedKey = null;
   scene.ui.layerBar.dragging = false;
+  scene.ui.texturePad.detent = 1;
+  scene.ui.texturePad.progress = 1;
+  scene.ui.texturePad.resize = 1;
+  scene.ui.texturePad.resizing = false;
+  scene.ui.texturePad.resizeMoved = false;
   scene.text.activeWord = -1;
   scene.text.pathEditArmed = false;
   clearTextSelectionOverride();
-  if (typeof resetSessionBackgroundEntities == "function") {
-    resetSessionBackgroundEntities();
-  }
   syncInputFromText();
 
   discardSavedTextMemory();
@@ -1219,6 +1520,37 @@ function textFieldSelectionStops(start, end) {
   return stops;
 }
 
+function textFieldPlaceholderOffsets(label) {
+  let words = label.split(" ");
+  let wordDelay = 0.16;
+  let jumpDuration = 0.42;
+  let cycleDuration =
+    max(1, words.length) * wordDelay + jumpDuration + 0.7;
+  let cycleTime = scene.elapsedTime % cycleDuration;
+  let offsets = [];
+
+  for (let i = 0; i < words.length; i++) {
+    let wordTime = cycleTime - i * wordDelay;
+    let jump =
+      wordTime >= 0 && wordTime <= jumpDuration
+        ? sin((wordTime / jumpDuration) * 180) * 0.18
+        : 0;
+
+    for (
+      let characterIndex = 0;
+      characterIndex < words[i].length;
+      characterIndex++
+    ) {
+      offsets.push({ x: 0, y: -jump });
+    }
+    if (i < words.length - 1) {
+      offsets.push({ x: 0, y: 0 });
+    }
+  }
+
+  return offsets;
+}
+
 function textFieldDisplayLabel(maxWidth = Infinity, textSizeValue = 16) {
   scene.ui.textField.selection = null;
   scene.ui.textField.opacity = null;
@@ -1228,6 +1560,31 @@ function textFieldDisplayLabel(maxWidth = Infinity, textSizeValue = 16) {
   scene.ui.textField.display = null;
   if (!scene.text.edit) {
     return "Edit";
+  }
+
+  if (scene.text.buffer.length == 0) {
+    let placeholder = "type your name here";
+    let characterCount = Array.from(placeholder).length;
+    scene.ui.textField.display = {
+      start: 0,
+      end: 0,
+      label: placeholder,
+      leftEllipsis: false,
+      rightEllipsis: false,
+    };
+    scene.ui.textField.opacity = Array(characterCount).fill(127.5);
+    scene.ui.textField.scales = Array(characterCount).fill(1);
+    scene.ui.textField.rotations = Array(characterCount).fill(0);
+    scene.ui.textField.offsets = textFieldPlaceholderOffsets(placeholder);
+    scene.ui.textField.selection = {
+      start: 0,
+      end: 0,
+      caret: true,
+      gradientStart: 0,
+      gradientEnd: characterCount,
+      colorStops: textFieldSelectionStops(0, 0),
+    };
+    return placeholder;
   }
 
   let selection = textSelectionState();

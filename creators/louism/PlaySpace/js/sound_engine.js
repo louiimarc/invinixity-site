@@ -172,19 +172,20 @@ class UiSoundEngine {
     });
   }
 
-  dial(control, value, pointerX = 0.5) {
-    let step = floor((((value % 1) + 1) % 1) * 16);
+  dial(control, value, pointerX = 0.5, speed = 1) {
+    let step = floor((((value % 1) + 1) % 1) * 18);
     if (this.dialPositions[control] == step) return;
     this.dialPositions[control] = step;
+    let speedAmount = constrain(abs(speed) / 3, 0, 1);
 
     this.playTone({
       frequency: 523.25,
       startRatio: 0.9,
       attack: 0.001,
-      decay: 0.02,
-      release: 0.014,
-      level: 0.028,
-      ramp: 0.012,
+      decay: lerp(0.032, 0.012, speedAmount),
+      release: lerp(0.02, 0.01, speedAmount),
+      level: lerp(0.018, 0.04, speedAmount),
+      ramp: lerp(0.016, 0.008, speedAmount),
       pointerX,
       waveType: "triangle",
     });
