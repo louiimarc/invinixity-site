@@ -24,7 +24,7 @@
     "runtime": "Browser globals with p5.js 1.11.13, p5.sound, WebGL, and GLSL",
     "entry": "index.html",
     "state": "scene, data, and inout globals in js/common_custom.js",
-    "renderLoop": "js/main_graphic.js",
+    "renderLoop": "js/main_graphic.js at a 120 fps target",
     "input": "js/basic_inputs.js",
     "gui": "js/gui_elements.js",
     "colorPanel": "js/color_panel.js",
@@ -51,6 +51,7 @@
     "wordIdentity": "Paths, colors, sizes, and texture coordinates are dictionary-based using occurrence-aware word keys"
   },
   "implemented": [
+    "The continuous p5 render target is set to 120 fps after the optimized build proved smooth on development hardware. Scanned text PNGs are loaded only when a word needs them and downsampled to a 512px render height after decode instead of retaining all 70 full-resolution images at startup. Stable per-word texture assignments and smoothed text paths are cached, with animated path processing capped at 160 representative points while drawing remains visually live",
     "Hidden native textarea with custom glass text field and selection UI; while the expanded field is empty, a non-persistent 50%-opacity 'type your name here' prompt jumps word-by-word in the same traveling sine wave as the frame-drawing guide and disappears on the first typed character",
     "Glass UI label graphics are cached after rendering and rebuilt only when interaction changes their visible text, displayed value, per-character animation, caret or selection gradient, marks, or dimensions; static controls reuse the cached label every frame while caret transitions continue only until settled",
     "The artwork has a canonical 1080x1350 (4:5) artboard displayed at 80% of the largest window fit. Outside editing it is centered. During editing, the active control column's live animated width is reserved and the artboard continuously recenters within the remaining workspace, equalizing its window-edge and control-panel gaps instead of hugging the opposite edge. Done recenters it and Edit restores the handed layout. Every frame of the handedness or panel-width animation remaps photo-frame points and text paths between consecutive artboard bounds and invalidates the cached clipped-photo buffer, so the clipped photo and all text travel with the card while preserving card-relative placement; saved and cached sessions use the same alignment metadata. The background remains full-window bleed with a non-exported 10%-opacity inverse-brightness outer tint. Card Preview crops only the rounded 5%-radius artboard; drawing stays inside the card and text paths use an 8% legibility inset",

@@ -220,6 +220,7 @@ function remapArtworkBetweenBounds(from, to) {
       point.y = mapped.y;
     }
   }
+  scene.text.renderPathCache = new WeakMap();
 }
 
 function compositionSafeBounds(insetRatio = scene.composition.safeInset) {
@@ -408,7 +409,10 @@ scene.text = {
     entries: [],
     byGroup: Object.create(null),
     byCharacter: Object.create(null),
+    assignmentCache: Object.create(null),
+    renderHeight: 512,
   },
+  renderPathCache: new WeakMap(),
   layerOrder: ["photo"],
   boil: {
     enabled: true,
@@ -771,6 +775,7 @@ function syncTextFromInput(event) {
 
   scene.text.buffer = cleaned;
   syncTextPathAssignments();
+  prefetchTextGlyphsForCurrentWords();
   syncTextCursorFromInput();
   saveTextMemory();
 }
@@ -1093,6 +1098,8 @@ function clearTextMemory() {
   scene.text.cursor.pos = 0;
   scene.text.cursor.preferredColumn = 0;
   scene.text.paths = Object.create(null);
+  scene.text.renderPathCache = new WeakMap();
+  scene.text.glyphAssets.assignmentCache = Object.create(null);
   scene.text.colors = Object.create(null);
   scene.text.sizes = Object.create(null);
   scene.text.sizeAnimations = Object.create(null);
@@ -1299,6 +1306,8 @@ function textPathForWordIndex(wordIndex) {
 function setTextPathForWordIndex(wordIndex, path) {
   let entry = textWordEntries()[wordIndex];
   if (entry == null) return false;
+  let previousPath = scene.text.paths[entry.key];
+  if (previousPath != null) scene.text.renderPathCache.delete(previousPath);
   scene.text.paths[entry.key] = path;
   return true;
 }
@@ -1700,6 +1709,32 @@ function smoothPath(points) {
   }
 
   return result;
+}
+
+function textRenderBasePath(path) {
+  let cached = scene.text.renderPathCache.get(path);
+  if (cached?.sourceLength == path.length) return cached.points;
+
+  let points = smoothPath(path);
+  let maximumPoints = 160;
+  if (points.length > maximumPoints) {
+    let sourcePoints = points;
+    points = Array.from({ length: maximumPoints }, (_, index) => {
+      let sourceIndex = round(map(
+        index,
+        0,
+        maximumPoints - 1,
+        0,
+        sourcePoints.length - 1,
+      ));
+      return sourcePoints[sourceIndex];
+    });
+  }
+  scene.text.renderPathCache.set(path, {
+    sourceLength: path.length,
+    points,
+  });
+  return points;
 }
 
 function boilingPath(points) {

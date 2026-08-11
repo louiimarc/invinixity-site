@@ -35,27 +35,18 @@ function textGlyphAssetEntries() {
   return entries;
 }
 
-function preloadTextGlyphAssets() {
-  scene.text.glyphAssets.entries = textGlyphAssetEntries().map((entry) => ({
-    ...entry,
-    image: loadImage(
-      entry.path,
-      loaded,
-      (error) => {
-        console.warn(`Unable to load text glyph ${entry.path}`, error);
-        loaded();
-      },
-    ),
-  }));
-}
-
 function setupTextGlyphAssets() {
   let assets = scene.text.glyphAssets;
+  assets.entries = textGlyphAssetEntries().map((entry) => ({
+    ...entry,
+    image: null,
+    loading: false,
+    failed: false,
+  }));
   assets.byGroup = Object.create(null);
   assets.byCharacter = Object.create(null);
 
   for (let entry of assets.entries) {
-    if (entry.image.width <= 1 || entry.image.height <= 1) continue;
     if (assets.byGroup[entry.group] == null) {
       assets.byGroup[entry.group] = Object.create(null);
     }
@@ -68,6 +59,29 @@ function setupTextGlyphAssets() {
     }
     assets.byCharacter[entry.character].push(entry);
   }
+}
+
+function requestTextGlyphImage(entry) {
+  if (entry == null || entry.image != null || entry.loading || entry.failed) {
+    return;
+  }
+
+  entry.loading = true;
+  loadImage(
+    entry.path,
+    (imageAsset) => {
+      if (imageAsset.height > scene.text.glyphAssets.renderHeight) {
+        imageAsset.resize(0, scene.text.glyphAssets.renderHeight);
+      }
+      entry.image = imageAsset;
+      entry.loading = false;
+    },
+    (error) => {
+      entry.loading = false;
+      entry.failed = true;
+      console.warn(`Unable to load text glyph ${entry.path}`, error);
+    },
+  );
 }
 
 function textGlyphGroupWeights(mix) {
@@ -87,6 +101,14 @@ function textGlyphRandom(seed, offset) {
 }
 
 function textGlyphGroupsForWord(wordSeed, characterCount, mix) {
+  let cache = scene.text.glyphAssets.assignmentCache;
+  let cacheKey = [
+    characterCount,
+    (mix?.x ?? 0.5).toFixed(4),
+    (mix?.y ?? 0.5).toFixed(4),
+  ].join(":");
+  if (cache[wordSeed]?.key == cacheKey) return cache[wordSeed].groups;
+
   let options = textGlyphGroupWeights(mix).map((option, index) => {
     let exactCount = option.weight * characterCount;
     return {
@@ -118,6 +140,7 @@ function textGlyphGroupsForWord(wordSeed, characterCount, mix) {
     let randomIndex = floor(textGlyphRandom(wordSeed, i + 101) * (i + 1));
     [groups[i], groups[randomIndex]] = [groups[randomIndex], groups[i]];
   }
+  cache[wordSeed] = { key: cacheKey, groups };
   return groups;
 }
 
@@ -145,7 +168,8 @@ function drawTextGlyphImage(
   if (char.trim() == "") return;
   let entry = textGlyphEntryFor(char, seed, group);
 
-  if (entry == null) {
+  if (entry == null || entry.image == null) {
+    requestTextGlyphImage(entry);
     fillWorkspaceText(gfx, defaultTextColor());
     gfx.noStroke();
     gfx.textFont(scene.text.font);
@@ -160,4 +184,23 @@ function drawTextGlyphImage(
   gfx.imageMode(CENTER);
   gfx.tint(255, 255, 255, 255);
   gfx.image(imageAsset, 0, 0, drawWidth, drawHeight);
+}
+
+function prefetchTextGlyphsForCurrentWords() {
+  let words = textWords();
+  for (let wordIndex = 0; wordIndex < words.length; wordIndex++) {
+    let word = words[wordIndex];
+    let groups = textGlyphGroupsForWord(
+      wordIndex + 1,
+      word.length,
+      textureMixForWordIndex(wordIndex),
+    );
+    for (let characterIndex = 0; characterIndex < word.length; characterIndex++) {
+      requestTextGlyphImage(textGlyphEntryFor(
+        word[characterIndex],
+        wordIndex * 1000 + characterIndex + 1,
+        groups[characterIndex],
+      ));
+    }
+  }
 }

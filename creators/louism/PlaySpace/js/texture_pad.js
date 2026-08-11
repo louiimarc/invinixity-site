@@ -188,6 +188,7 @@ function updateTexturePadFromPointer() {
   );
   scene.ui.texturePad.previewMix = { x, y };
   setTextureMixForSelectedWords(x, y);
+  prefetchTextGlyphsForCurrentWords();
   inout.audio.ui?.xyPad("texturePad", x, y, mouseX / width);
 }
 

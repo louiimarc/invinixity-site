@@ -1,12 +1,9 @@
 function preload() {
-  data.amount =
-    6 +
-    textGlyphAssetEntries().length;
+  data.amount = 6;
   scene.font = loadFont("assets/font/Nunito-Bold.ttf", loaded);
   scene.text.font = loadFont("assets/font/Humanize.ttf", loaded);
   scene.shader = loadShader("shader/vert.glsl", "shader/frag.glsl", loaded);
   preloadFrameOverlayAssets();
-  preloadTextGlyphAssets();
   inout.audio.cameraShutter = loadSound(
     "assets/sound/Camera 3.m4a",
     loaded,
@@ -20,6 +17,7 @@ function preload() {
 function setup() {
   createCanvas(windowWidth, windowHeight, WEBGL);
   pixelDensity(1);
+  frameRate(120);
   smooth();
   angleMode(DEGREES);
   textFont(scene.font);
@@ -43,6 +41,7 @@ function setup() {
   scene.workspace.angleMode(DEGREES);
   scene.workspace.textFont(scene.text.font);
   setupTextGlyphAssets();
+  prefetchTextGlyphsForCurrentWords();
 
   scene.gui = {
     print: new GraphicalUserInterface("Finish", scene.workspace, scene.shader),

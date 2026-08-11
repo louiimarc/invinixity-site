@@ -379,7 +379,7 @@ function drawDebugGuides() {
 }
 
 function drawWordOnTextPath(txt, path, textSizeValue, pathIndex, layerZ = 0) {
-  let points = boilingPath(smoothPath(path));
+  let points = boilingPath(textRenderBasePath(path));
   let lengths = points.length >= 2 ? buildLengths(points) : [];
   if (points.length < 2 || lengths.length < 2) return;
 
