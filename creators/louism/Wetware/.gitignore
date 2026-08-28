@@ -1,0 +1,8 @@
+node_modules/
+.wetware-state/
+.DS_Store
+tmp/
+public/assets/video/*
+!public/assets/video/README.md
+source-media/
+dist/

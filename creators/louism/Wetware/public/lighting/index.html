@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Lighting Monitor">
+  <meta name="theme-color" content="#000000">
+  <link rel="manifest" href="/api/manifest/lighting">
+  <link rel="icon" href="/app-icons/lighting.svg" type="image/svg+xml">
+  <title>Wetware — Lighting Monitor</title>
+  <link rel="stylesheet" href="./lighting.css?v=1">
+</head>
+<body>
+  <header>
+    <span id="connection" class="connecting">CONNECTING</span>
+    <strong id="cue">WAITING FOR SHOW STATE</strong>
+  </header>
+  <main>
+    <section id="wall" class="output no-content" aria-live="polite">
+      <small>TOP · BACK WALL</small>
+      <b>NO CONTENT</b>
+    </section>
+    <section id="floor" class="output no-content" aria-live="polite">
+      <small>BOTTOM · FLOOR</small>
+      <b>NO CONTENT</b>
+    </section>
+  </main>
+  <div id="aquarium" hidden>LIGHTS OFF<br><small>AQUARIUM</small></div>
+  <script type="module" src="./lighting.js?v=1"></script>
+</body>
+</html>

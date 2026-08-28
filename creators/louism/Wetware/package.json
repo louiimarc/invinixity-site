@@ -1,0 +1,21 @@
+{
+  "name": "wetware-show-control",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Offline-first p5 show control for Merpati Performance Laboratory's Wetware.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node scripts/dev-server.js",
+    "test": "node --test",
+    "bundle:offline": "node scripts/build-offline-bundle.js",
+    "verify:bundle": "node scripts/verify-bundle.js",
+    "slides:audit": "node scripts/prepare-nugget-slideshow.js",
+    "slides:install": "node scripts/prepare-nugget-slideshow.js --install"
+  },
+  "dependencies": {
+    "p5": "^1.11.10",
+    "qrcode": "^1.5.4",
+    "ws": "^8.18.3"
+  }
+}

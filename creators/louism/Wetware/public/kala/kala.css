@@ -1,0 +1,23 @@
+:root { color-scheme:dark; font-family:Inter,system-ui,sans-serif; }
+* { box-sizing:border-box; }
+html,body { width:100%; height:100%; margin:0; overflow:hidden; background:#000; overscroll-behavior:none; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+#pad { position:fixed; inset:0; overflow:hidden; touch-action:none; background:#030303; }
+#pad::before { content:""; position:absolute; inset:0; opacity:.22; background-image:linear-gradient(#ff3f7828 1px,transparent 1px),linear-gradient(90deg,#ff3f7828 1px,transparent 1px); background-size:10vw 10vh; }
+#horizontal,#vertical { position:absolute; z-index:2; display:block; background:#ff3f78aa; pointer-events:none; }
+#horizontal { left:0; right:0; top:50%; height:1px; }
+#vertical { top:0; bottom:0; left:50%; width:1px; }
+#marker { position:absolute; z-index:3; left:50%; top:50%; width:34px; height:34px; border:3px solid #fff; border-radius:50%; background:#ff3f78; box-shadow:0 0 26px #ff3f78; transform:translate(-50%,-50%); pointer-events:none; }
+header { position:absolute; z-index:4; left:max(12px,env(safe-area-inset-left)); right:max(12px,env(safe-area-inset-right)); top:max(12px,env(safe-area-inset-top)); display:flex; justify-content:space-between; gap:10px; color:#fff; font:800 10px ui-monospace,monospace; letter-spacing:.08em; pointer-events:none; }
+header span,header strong,footer { padding:7px 10px; border:1px solid #713149; border-radius:999px; background:#080608dd; }
+.connection { display:flex; align-items:center; gap:7px; }
+.connection i { width:7px; height:7px; flex:0 0 auto; border-radius:50%; background:#ffba4b; }
+.connection em { font-style:normal; }
+.connection.online { color:#ff3f78; border-color:#ff3f78; }
+.connection.online i { background:#ff3f78; box-shadow:0 0 10px #ff3f78; }
+.connection.offline i { background:#ff4e7a; }
+header strong.live { color:#000; background:#ff3f78; border-color:#ff3f78; }
+footer { position:absolute; z-index:4; left:50%; bottom:max(12px,env(safe-area-inset-bottom)); transform:translateX(-50%); color:#a98692; white-space:nowrap; font:800 9px ui-monospace,monospace; letter-spacing:.08em; pointer-events:none; }
+#fullscreenGate { position:fixed; inset:0; z-index:20; display:grid; place-content:center; gap:10px; border:0; border-radius:0; background:#000; color:#ff3f78; text-align:center; touch-action:manipulation; }
+#fullscreenGate[hidden] { display:none; }
+#fullscreenGate strong { font-size:clamp(1.4rem,7vw,3rem); }
+#fullscreenGate small { color:#ac7a8b; font:800 10px ui-monospace,monospace; letter-spacing:.1em; }

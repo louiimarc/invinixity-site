@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Kala Face">
+  <meta name="theme-color" content="#000000">
+  <link rel="manifest" href="/api/manifest/kala">
+  <link rel="apple-touch-icon" href="/app-icons/kala-192.png">
+  <link rel="icon" href="/app-icons/kala.svg" type="image/svg+xml">
+  <title>Wetware — Kala Face Controller</title>
+  <link rel="stylesheet" href="./kala.css?v=2">
+</head>
+<body>
+  <button id="fullscreenGate" type="button" hidden><strong>TAP FOR FULLSCREEN</strong><small>THEN TOUCH ANYWHERE TO POSITION KALA</small></button>
+  <main id="pad" aria-label="Kala face position controller">
+    <i id="horizontal"></i><i id="vertical"></i><b id="marker"></b>
+    <header><span id="connection" class="connection connecting" role="status" aria-live="polite"><i></i><em>CONNECTING</em></span><strong id="cue">STANDBY · WAITING FOR F3.3</strong></header>
+    <footer>PHONE WINDOW X/Y → BACK WALL X/Y</footer>
+  </main>
+  <script type="module" src="./kala.js?v=4"></script>
+</body>
+</html>

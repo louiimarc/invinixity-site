@@ -1,0 +1,306 @@
+{
+  "slides": [
+    {
+      "text": "KEMEJA",
+      "image": "01-kemeja.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "RIASAN",
+      "image": "02-riasan.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "WANGI-WANGIAN",
+      "image": "03-wangi-wangian.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "GANGGUAN FINANSIAL",
+      "image": "04-gangguan-finansial.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "TATA BAHASA INDONESIA",
+      "image": "05-tata-bahasa-indonesia.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "SEKOLAH CHICKEN NUGGET",
+      "image": "06-sekolah-chicken-nugget.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "IJAZAH CHICKEN NUGGET",
+      "image": "07-ijazah-chicken-nugget.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "PENGALAMAN KERJA CHICKEN NUGGET",
+      "image": "08-pengalaman-kerja-chicken-nugget.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "RELASI CHICKEN NUGGET",
+      "image": "09-relasi-chicken-nugget.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "LAPANGAN KERJA CHICKEN NUGGET",
+      "image": "10-lapangan-kerja-chicken-nugget.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "GELAR SARJANA CHICKEN NUGGET (S.Cn)",
+      "image": "11-gelar-sarjana-chicken-nugget-scn.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "NIKAH",
+      "image": "12-nikah.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "PASANGAN",
+      "image": "13-pasangan.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "CERAI",
+      "image": "14-cerai.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "SEX",
+      "image": "15-sex.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "ANAK SKENA",
+      "image": "16-anak-skena.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "CARI UANG",
+      "image": "17-cari-uang.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "INTERNET",
+      "image": "18-internet.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "SELURUH DUNIA",
+      "image": "19-seluruh-dunia.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "KESET BULE",
+      "image": "20-keset-bule.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "PENGANGGURAN",
+      "image": "21-pengangguran.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "ANIME ISEKAI",
+      "image": "22-anime-isekai.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "MCU",
+      "image": "23-mcu.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "ALKOHOL",
+      "image": "24-alkohol.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "BABI",
+      "image": "25-babi.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "PROTEIN",
+      "image": "26-protein.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "GULA",
+      "image": "27-gula.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "TEPUNG",
+      "image": "28-tepung.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "SAYUR HIJAU",
+      "image": "29-sayur-hijau.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "TEUR REBUS",
+      "image": "30-teur-rebus.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "SAUS",
+      "image": "31-saus.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "BEKARYA",
+      "image": "32-bekarya.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "TEATER",
+      "image": "33-teater.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "SEDIH",
+      "image": "34-sedih.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "GOKIL",
+      "image": "35-gokil.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "PERTANYAAN",
+      "image": "36-pertanyaan.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "MOTIF",
+      "image": "37-motif.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "TEMA",
+      "image": "38-tema.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "WACANA",
+      "image": "39-wacana.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "DARURAT",
+      "image": "40-darurat.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "LIFE-CHANGING",
+      "image": "41-life-changing.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "GAK BERARTI",
+      "image": "42-gak-berarti.png",
+      "background": "#f4efe0",
+      "foreground": "#07080b",
+      "fit": "contain"
+    },
+    {
+      "text": "TUHAN",
+      "image": "43-tuhan-cross.png",
+      "background": "#000000",
+      "foreground": "#71ff4b",
+      "fit": "contain",
+      "zoom": true
+    }
+  ]
+}

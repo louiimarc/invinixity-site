@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Wetware — Operator</title>
+  <link rel="stylesheet" href="/common/theme.css">
+  <link rel="stylesheet" href="./operator.css?v=12">
+</head>
+<body>
+  <header>
+    <div>
+      <p class="eyebrow">MERPATI PERFORMANCE LABORATORY</p>
+      <h1>WETWARE&lt;3 <span>SHOW CONTROL</span></h1>
+      <p id="eventMeta" class="event-meta"></p>
+    </div>
+    <div class="connection"><span id="connectionDot" class="status-dot"></span><span id="connectionText">CONNECTING</span></div>
+  </header>
+
+  <main>
+    <section class="now panel">
+      <div class="now-heading">
+        <span id="cueNumber" class="cue-number">H0</span>
+        <div><p id="section">PRE-SHOW</p><h2 id="cueLabel">Blackout before start</h2></div>
+      </div>
+      <p id="cueNote" class="note"></p>
+      <div class="transport">
+        <button id="back" class="secondary">← BACK</button>
+        <button id="go" class="go">GO <span>SPACE</span></button>
+      </div>
+      <div class="toggles">
+        <button id="blackout" class="danger">BLACKOUT <span>B</span></button>
+        <button id="freeze" class="secondary">FREEZE <span>F</span></button>
+        <button id="calibration" class="secondary">CALIBRATION <span>C</span></button>
+        <button id="pulse" class="secondary">PULSE / EFFECT</button>
+      </div>
+      <div class="projector-launches">
+        <button id="openWallProjector" class="projector-launch">OPEN / FOCUS BACK WALL <span>then F</span></button>
+        <button id="openFloorProjector" class="projector-launch">OPEN / FOCUS TOP-DOWN FLOOR <span>then F</span></button>
+      </div>
+      <label class="progress-control">
+        <span>LOADING STATE <strong id="progressValue">0%</strong></span>
+        <input id="progress" type="range" min="0" max="100" step="0.1" value="0">
+      </label>
+    </section>
+
+    <section class="devices panel">
+      <div class="panel-title"><h3>DEVICES</h3><span>must all be Nova pink</span></div>
+      <div id="deviceGrid" class="device-grid"></div>
+      <div class="ipad-connect">
+        <div class="ipad-connect-heading"><strong>SHOW DEVICE LINKS</strong><span>SAME WI-FI</span></div>
+        <p id="ipadServerAddress" class="ipad-server-address">CHECKING MAC ADDRESS…</p>
+        <div id="ipadLinks" class="ipad-links"></div>
+        <button id="copyDeviceLinks" class="secondary tiny-button" disabled>COPY ALL 6 URLS</button>
+      </div>
+    </section>
+
+    <section class="tech panel">
+      <div class="panel-title"><h3>TECHNICAL CERTIFICATION</h3><span>RUN AFTER ALL WINDOWS ARE FINAL</span></div>
+      <p id="techSummary" class="tech-summary">NOT RUN · checks devices, fullscreen, latency, media and gamepad</p>
+      <div id="techChecks" class="tech-checks"></div>
+      <div class="tech-actions"><button id="runTechCheck">RUN TECH CHECK</button><button id="downloadTechReport" class="secondary" disabled>DOWNLOAD REPORT JSON</button></div>
+    </section>
+
+    <section class="rehearsal panel">
+      <div class="panel-title"><h3>REHEARSAL RUN LOG</h3><span>TRIGGERS · DURATIONS · NOTES</span></div>
+      <label class="rehearsal-title">Run name <input id="rehearsalTitle" maxlength="120" value="Wetware rehearsal"></label>
+      <p id="rehearsalStatus" class="rehearsal-status">NO ACTIVE LOG</p>
+      <div class="rehearsal-actions">
+        <button id="startRehearsal">START NEW LOG</button>
+        <button id="stopRehearsal" class="secondary" disabled>STOP LOG</button>
+      </div>
+      <label class="rehearsal-note">Cue note <textarea id="rehearsalNote" maxlength="500" rows="2" placeholder="Spoken trigger, movement, late cue, fallback…"></textarea></label>
+      <button id="addRehearsalNote" class="secondary" disabled>ADD NOTE AT CURRENT CUE</button>
+      <div class="rehearsal-actions rehearsal-exports">
+        <button id="downloadRehearsalJson" class="secondary" disabled>DOWNLOAD JSON</button>
+        <button id="downloadRehearsalCsv" class="secondary" disabled>DOWNLOAD CUE CSV</button>
+        <button id="clearRehearsal" class="danger" disabled>CLEAR LOCAL LOG</button>
+      </div>
+      <div id="rehearsalEntries" class="rehearsal-entries"></div>
+    </section>
+
+    <section class="controllers panel">
+      <div class="panel-title"><h3>LIVE CONTROLLERS</h3><span>MAC INPUT</span></div>
+      <div class="controller-status">
+        <div><span id="gamepadDot" class="status-dot"></span><strong>GAMEPAD</strong><small id="gamepadStatus">Move a stick or press a button</small></div>
+        <div><span id="midiDot" class="status-dot"></span><strong>WEBMIDI / CC ONLY</strong><small id="midiStatus">Not enabled</small></div>
+      </div>
+      <div class="camera-input-control">
+        <div><strong>LIVE CAMERA INPUT</strong><small id="cameraInputStatus">REFRESH TO FIND BUILT-IN OR IPHONE CONTINUITY CAMERA</small></div>
+        <div>
+          <select id="cameraInputSelect" aria-label="Live camera input"><option value="">DEFAULT CAMERA</option></select>
+          <button id="refreshCameraInputs" class="secondary">REFRESH CAMERAS</button>
+        </div>
+      </div>
+      <div class="fish-track"><span>IPAD 1</span><span>IPAD 2</span><span>IPAD 3</span><i id="fishMarker">◀</i></div>
+      <div class="controller-actions">
+        <button id="swarmTest" class="secondary">SWARM LINE TEST</button>
+        <button id="ipadOrderTest" class="secondary">IPAD ORDER TEST</button>
+        <button id="enableMidi" class="secondary">ENABLE MIDI INPUT</button>
+      </div>
+      <label class="ipad-order-confirm"><input id="confirmIpadOrder" type="checkbox"> I VISUALLY CONFIRM IPAD 1 → 2 → 3 IS LEFT → CENTER → RIGHT</label>
+      <div class="midi-map">
+        <label>Progress <input id="ccProgress" type="number" min="0" max="127" value="1"></label>
+        <label>Intensity <input id="ccIntensity" type="number" min="0" max="127" value="2"></label>
+        <label>Fish speed <input id="ccFishSpeed" type="number" min="0" max="127" value="3"></label>
+        <label>Fish depth <input id="ccFishDepth" type="number" min="0" max="127" value="4"></label>
+        <label>Cue select <input id="ccCue" type="number" min="0" max="127" value="20"></label>
+      </div>
+      <label class="arm-cue"><input id="armMidiCue" type="checkbox"> ARM CC CUE SELECT (dangerous)</label>
+      <div class="virtual-cc">
+        <strong>VIRTUAL CC — REHEARSAL FALLBACK</strong>
+        <label>Intensity <input id="virtualIntensity" type="range" min="0" max="127" value="90"><output>90</output></label>
+        <label>Fish speed <input id="virtualFishSpeed" type="range" min="0" max="127" value="64"><output>64</output></label>
+        <label>Fish depth <input id="virtualFishDepth" type="range" min="0" max="127" value="64"><output>64</output></label>
+      </div>
+      <p class="controller-help">Aquarium: left stick moves the ancient fish left/right/up/down; horizontal input is inverted for the hologram. Kala F3.3 follows the mouse on the back-wall projector. L1 goes to the previous scene and R1 goes to the next. Hold R2 to advance loading or L2 to reverse it; Freeze pauses both loading changes and animated show content. MIDI Note On/Off is always ignored.</p>
+    </section>
+
+    <section class="scene-setup panel">
+      <div class="panel-title"><h3>SCENE SETUP</h3><span>OPERATOR ONLY · H0 PREVIEW</span></div>
+      <div class="setup-preview-buttons">
+        <button class="secondary" data-setup-preview="kala-face">PREVIEW KALA</button>
+        <button class="secondary" data-setup-preview="stone-mask">PREVIEW STONE</button>
+        <button class="secondary" data-setup-preview="off">PREVIEW OFF</button>
+      </div>
+      <div class="scene-setup-block">
+        <strong>KALA FACE · UNIFORM SIZE</strong>
+        <div class="scene-sliders">
+          <label>UNIFORM SCALE <input id="kalaScale" type="range" min="0.03" max="1" step="0.001"><output id="kalaScaleValue">0.420</output></label>
+        </div>
+        <small>During F3.3, move the mouse on the back-wall projector window. Pointer position maps directly to 0…100% of that window with no smoothing. Scale is uniform and preserves each PNG's native aspect ratio.</small>
+      </div>
+      <div class="scene-setup-block">
+        <div class="scene-setup-heading"><strong>STONE LIVE VECTOR MASK</strong><button id="clearStoneMask" class="danger tiny-button">CLEAR MASK</button></div>
+        <canvas id="stoneMaskPad" width="960" height="540" aria-label="Draw stone outline"></canvas>
+        <small>Draw while watching the tracing line on the back wall. Return inside the green 28 px starting circle to close it; the line then disappears and the stone video appears, cover-fitted inside the completed mask bounds.</small>
+      </div>
+    </section>
+
+    <section class="mapping panel">
+      <div class="panel-title"><h3>PROJECTOR QUAD MAPPING</h3><span id="cueSurface">BACK WALL · SCREEN</span></div>
+      <div class="keystone-mini-grid">
+        <button class="keystone-miniature" data-open-keystone="screen">
+          <strong>BACK WALL</strong><small data-projector-size="screen">16:9 PREVIEW</small>
+          <span class="keystone-stage" data-surface="screen"><i class="keystone-plane"></i></span>
+        </button>
+        <button class="keystone-miniature" data-open-keystone="floor">
+          <strong>TOP-DOWN FLOOR</strong><small data-projector-size="floor">16:9 PREVIEW</small>
+          <span class="keystone-stage" data-surface="floor"><i class="keystone-plane"></i></span>
+        </button>
+      </div>
+      <button id="openKeystoneDialog" class="secondary keystone-open">OPEN LARGE VISUAL KEYSTONE</button>
+      <div class="mapping-selects">
+        <label>Surface<select id="surfaceSelect"></select></label>
+        <label>Corner<select id="cornerSelect"><option value="0">TOP LEFT</option><option value="1">TOP RIGHT</option><option value="2">BOTTOM RIGHT</option><option value="3">BOTTOM LEFT</option></select></label>
+      </div>
+      <div class="coordinate-sliders">
+        <label>X <input id="surfaceX" type="range" min="0" max="1" step="0.001"><output id="surfaceXValue">0.000</output></label>
+        <label>Y <input id="surfaceY" type="range" min="0" max="1" step="0.001"><output id="surfaceYValue">0.000</output></label>
+      </div>
+      <div class="mapping-actions">
+        <div class="nudge-pad">
+          <button data-dx="0" data-dy="-0.005" aria-label="Nudge surface point up">↑</button>
+          <button data-dx="-0.005" data-dy="0" aria-label="Nudge surface point left">←</button>
+          <button data-dx="0.005" data-dy="0" aria-label="Nudge surface point right">→</button>
+          <button data-dx="0" data-dy="0.005" aria-label="Nudge surface point down">↓</button>
+        </div>
+        <button id="resetSurface" class="danger">RESET ACTIVE SURFACE</button>
+      </div>
+      <p class="controller-help">Open the visual keystone and drag its four pink corners. Kala and the stone mask are direct overlays; only the background wall and floor use quad mapping. The preview copies each projector's reported window ratio.</p>
+    </section>
+
+    <section class="assets panel">
+      <div class="panel-title"><h3>MEDIA PREFLIGHT</h3><button id="refreshAssets" class="tiny-button">REFRESH</button></div>
+      <p id="assetSummary" class="asset-summary">Checking local media…</p>
+      <div id="assetList" class="asset-list"></div>
+    </section>
+
+    <section class="cue-list panel">
+      <div class="panel-title"><h3>CUE STACK</h3><span id="revision">REV —</span></div>
+      <div id="cues"></div>
+    </section>
+  </main>
+  <div id="qrDialog" class="qr-dialog" role="dialog" aria-modal="true" aria-labelledby="qrTitle" hidden>
+    <div class="qr-card">
+      <button id="qrClose" class="qr-close" aria-label="Close QR code">×</button>
+      <p class="eyebrow">SCAN WITH CAMERA</p>
+      <h2 id="qrTitle">DEVICE LINK</h2>
+      <img id="qrImage" alt="QR code for device link">
+      <code id="qrUrl"></code>
+      <small>Device must be connected to the same Wi-Fi.</small>
+    </div>
+  </div>
+  <div id="keystoneDialog" class="keystone-dialog" role="dialog" aria-modal="true" aria-labelledby="keystoneTitle" hidden>
+    <div class="keystone-card">
+      <button id="keystoneClose" class="qr-close" aria-label="Close visual keystone">×</button>
+      <p class="eyebrow">OPERATOR-ONLY CONTROL</p>
+      <h2 id="keystoneTitle">VISUAL PROJECTOR KEYSTONE</h2>
+      <p class="keystone-instruction">Drag the four pink points. Both projector outputs display checkerboards while calibration is active.</p>
+      <div class="keystone-large-grid">
+        <article>
+          <header><strong>BACK WALL</strong><small data-projector-size="screen">16:9 PREVIEW</small></header>
+          <div class="keystone-stage large" data-surface="screen">
+            <i class="keystone-plane"></i>
+            <button class="keystone-handle" data-corner="0" aria-label="Back wall top-left corner">TL</button>
+            <button class="keystone-handle" data-corner="1" aria-label="Back wall top-right corner">TR</button>
+            <button class="keystone-handle" data-corner="2" aria-label="Back wall bottom-right corner">BR</button>
+            <button class="keystone-handle" data-corner="3" aria-label="Back wall bottom-left corner">BL</button>
+          </div>
+        </article>
+        <article>
+          <header><strong>TOP-DOWN FLOOR</strong><small data-projector-size="floor">16:9 PREVIEW</small></header>
+          <div class="keystone-stage large" data-surface="floor">
+            <i class="keystone-plane"></i>
+            <button class="keystone-handle" data-corner="0" aria-label="Floor top-left corner">TL</button>
+            <button class="keystone-handle" data-corner="1" aria-label="Floor top-right corner">TR</button>
+            <button class="keystone-handle" data-corner="2" aria-label="Floor bottom-right corner">BR</button>
+            <button class="keystone-handle" data-corner="3" aria-label="Floor bottom-left corner">BL</button>
+          </div>
+        </article>
+      </div>
+      <div class="keystone-dialog-actions">
+        <button id="keystoneReset" class="danger">RESET SELECTED PLANE</button>
+        <button id="keystoneDone">DONE · HIDE CHECKERBOARDS</button>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="./operator.js?v=31"></script>
+</body>
+</html>

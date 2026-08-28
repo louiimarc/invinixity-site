@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Wetware — Projector</title>
+  <link rel="stylesheet" href="/common/theme.css">
+  <link rel="stylesheet" href="./projector.css?v=13">
+</head>
+<body>
+  <main id="stage"></main>
+  <iframe id="youtubeLayer" title="Curtain-call video" allow="autoplay; encrypted-media; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen hidden></iframe>
+  <canvas id="auxCanvas" aria-hidden="true"></canvas>
+  <video id="mediaLayer" playsinline></video>
+  <video id="auxMediaLayer" playsinline muted></video>
+  <video id="cameraLayer" playsinline muted></video>
+  <button id="arm">ARM OUTPUT + FULLSCREEN</button>
+  <section id="wallCameraSetup" hidden>
+    <strong>BACK WALL INPUT SETUP</strong>
+    <small>CAMERA</small>
+    <select id="wallCameraSelect" aria-label="Back wall local camera"><option value="">DEFAULT CAMERA</option></select>
+    <button id="wallCameraRefresh">REFRESH CAMERAS</button>
+    <small id="wallCameraStatus">SELECT ON THIS WINDOW</small>
+  </section>
+  <div id="outputBadge">PROJECTOR OUTPUT</div>
+  <div id="networkBadge"><span class="status-dot"></span><span>CONNECTING</span></div>
+  <script src="/vendor/p5.min.js"></script>
+  <script type="module" src="./projector.js?v=37"></script>
+</body>
+</html>
