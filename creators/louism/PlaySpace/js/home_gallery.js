@@ -65,7 +65,9 @@ async function refreshHomeExamples() {
   let state = scene.homeGallery;
   let requestId = ++state.exampleRequestId;
   try {
-    let response = await fetch("/api/examples", { cache: "no-store" });
+    let response = await fetch(playSpaceApiUrl("/api/examples"), {
+      cache: "no-store",
+    });
     if (!response.ok) throw new Error("Example service unavailable");
     let payload = await response.json();
     let urls = Array.isArray(payload.examples) ? payload.examples : [];

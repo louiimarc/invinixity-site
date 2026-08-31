@@ -378,7 +378,7 @@ function captureCurrentCreationRecipe(options = {}) {
 
 async function saveSpecialSessionExample(posterSnapshot) {
   let posterBlob = cardPreviewPosterBlob(posterSnapshot);
-  let response = await fetch("/api/examples", {
+  let response = await fetch(playSpaceApiUrl("/api/examples"), {
     method: "POST",
     headers: { "Content-Type": "image/png" },
     body: posterBlob,

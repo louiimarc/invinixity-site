@@ -1,3 +1,22 @@
+var PLAYSPACE_REMOTE_API_ORIGIN =
+  "https://playspace-poster-api.louis-marcellino.workers.dev";
+
+function playSpaceApiOrigin() {
+  if (typeof window.PLAYSPACE_API_ORIGIN == "string") {
+    return window.PLAYSPACE_API_ORIGIN.replace(/\/$/, "");
+  }
+  let hostname = window.location.hostname.toLowerCase();
+  let usesLocalServer = hostname == "localhost" ||
+    hostname == "127.0.0.1" ||
+    hostname.endsWith(".local");
+  return usesLocalServer ? "" : PLAYSPACE_REMOTE_API_ORIGIN;
+}
+
+function playSpaceApiUrl(path) {
+  let normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${playSpaceApiOrigin()}${normalizedPath}`;
+}
+
 var scene = {
     pixScale: 1.0,
     elapsedTime: 0.0,

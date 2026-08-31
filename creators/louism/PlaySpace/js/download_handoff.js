@@ -254,7 +254,7 @@ function restoreDownloadHandoff() {
     downloadHandoff.posterImageUrl = saved.posterImageUrl ||
       (downloadHandoff.token == ""
         ? ""
-        : `/poster/${downloadHandoff.token}.png`);
+        : playSpaceApiUrl(`/poster/${downloadHandoff.token}.png`));
     downloadHandoff.backgroundFrameIndex =
       Number.isInteger(saved.backgroundFrameIndex)
         ? saved.backgroundFrameIndex
@@ -286,8 +286,27 @@ function wifiQrPayload(config) {
   return `WIFI:T:${escapeWifiQrValue(config.wifiSecurity)};S:${escapeWifiQrValue(config.wifiName)};P:${escapeWifiQrValue(config.wifiPassword)};${hidden};`;
 }
 
-function qrImageUrl(text) {
-  return `/api/qr?text=${encodeURIComponent(text)}`;
+async function setDownloadHandoffQr(image, text) {
+  if (image == null) return;
+  let requestedText = String(text);
+  image.dataset.qrText = requestedText;
+  try {
+    if (globalThis.QRCode?.toDataURL == null) {
+      throw new Error("Browser QR renderer unavailable");
+    }
+    let source = await globalThis.QRCode.toDataURL(requestedText, {
+      width: 512,
+      errorCorrectionLevel: "M",
+      margin: 2,
+      color: { dark: "#1D1D1D", light: "#FFFFFF" },
+    });
+    if (image.dataset.qrText == requestedText) image.src = source;
+  } catch (error) {
+    console.warn("Unable to render QR code in the browser", error);
+    image.src = playSpaceApiUrl(
+      `/api/qr?text=${encodeURIComponent(requestedText)}`,
+    );
+  }
 }
 
 function dataUrlBlob(dataUrl) {
@@ -330,12 +349,14 @@ async function beginDownloadHandoff(posterSnapshot) {
   setDownloadHandoffProgress(1);
 
   try {
-    let configResponse = await fetch("/api/config", { cache: "no-store" });
+    let configResponse = await fetch(playSpaceApiUrl("/api/config"), {
+      cache: "no-store",
+    });
     let posterBlob = cardPreviewPosterBlob(posterSnapshot);
     if (!configResponse.ok) throw new Error("Download service unavailable");
     downloadHandoff.config = await configResponse.json();
 
-    let posterResponse = await fetch("/api/posters", {
+    let posterResponse = await fetch(playSpaceApiUrl("/api/posters"), {
       method: "POST",
       headers: { "Content-Type": "image/png" },
       body: posterBlob,
@@ -343,7 +364,7 @@ async function beginDownloadHandoff(posterSnapshot) {
     if (!posterResponse.ok) throw new Error("Unable to save poster");
     let session = await posterResponse.json();
     if (session.exampleUrl == null) {
-      let exampleResponse = await fetch("/api/examples", {
+      let exampleResponse = await fetch(playSpaceApiUrl("/api/examples"), {
         method: "POST",
         headers: { "Content-Type": "image/png" },
         body: posterBlob,
@@ -356,7 +377,8 @@ async function beginDownloadHandoff(posterSnapshot) {
     }
     downloadHandoff.downloadUrl = session.downloadUrl;
     downloadHandoff.token = session.token;
-    downloadHandoff.posterImageUrl = `/poster/${session.token}.png`;
+    downloadHandoff.posterImageUrl = session.posterImageUrl ||
+      playSpaceApiUrl(`/poster/${session.token}.png`);
     downloadHandoff.scanExpiresAt = Date.now() + 60000;
     prepareDownloadHandoffPosterScene();
     refreshHomeExamples();
@@ -433,7 +455,7 @@ function showWifiJoinStep() {
   downloadHandoffElement(".handoff-copy").hidden = false;
   let qr = downloadHandoffElement(".handoff-qr");
   qr.alt = `QR code to join ${config.wifiName} Wi-Fi`;
-  qr.src = qrImageUrl(wifiQrPayload(config));
+  setDownloadHandoffQr(qr, wifiQrPayload(config));
   downloadHandoffElement(".handoff-scan").hidden = false;
   let detail = downloadHandoffElement(".handoff-detail");
   detail.textContent = `Wi-Fi: ${config.wifiName}`;
@@ -454,7 +476,7 @@ function showPosterDownloadStep() {
   downloadHandoffElement(".handoff-copy").hidden = true;
   let qr = downloadHandoffElement(".handoff-qr");
   qr.alt = "QR code to download your PlaySpace poster";
-  qr.src = qrImageUrl(downloadHandoff.downloadUrl);
+  setDownloadHandoffQr(qr, downloadHandoff.downloadUrl);
   downloadHandoffElement(".handoff-scan").hidden = false;
   let detail = downloadHandoffElement(".handoff-detail");
   detail.textContent = "Scan QR\nto save poster!";
