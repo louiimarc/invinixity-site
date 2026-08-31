@@ -1,7 +1,9 @@
 data.loading.bar = function () {
   if (
     scene.session.cameraPrompt.confirming ||
-    scene.session.mode == "frame"
+    ["frame", "secretDemo", "secretDemoLoading"].includes(
+      scene.session.mode,
+    )
   ) {
     data.loading.interface.bounds = null;
     return;
@@ -34,13 +36,17 @@ data.loading.bar = function () {
     return;
   }
 
-  data.loading.position.y = animateData(data.loading.position.y, 0.0, 0.125);
+  let homeTargetY = canFinish && scene.session.mode == "idle"
+    ? height * 0.36
+    : 0;
+  data.loading.position.y = animateData(
+    data.loading.position.y,
+    homeTargetY,
+    0.125,
+  );
   if (data.loading.position.y < height + 200 * scene.ui.scale) {
     push();
     translate(0, 0, 16);
-
-    rotateZ(cos(scene.elapsedTime * 90) * 5);
-    rotateX(sin(scene.elapsedTime * 180) * 15);
 
     let progressTarget = data.loading.arrived ? realProgress : 0;
     data.loading.progress = animateData(
@@ -50,28 +56,50 @@ data.loading.bar = function () {
     );
     data.animate = data.loading.progress;
 
-    noStroke();
-    fill(25);
-
-    data.loading.interface.label = canFinish ? "Start" : "Loading";
     data.loading.interface.armed =
       canFinish && scene.ui.pointer.pressTarget == "sessionStart";
-    data.loading.interface.update(
-      scene.elapsedTime,
-      uiPointer(),
-      uiPointerActive(),
-    );
     let barSize = 68 * scene.ui.scale;
-    data.loading.interface.slider(
-      data.loading.position.x,
-      data.loading.position.y,
-      barSize * 4,
-      barSize,
-      barSize,
-      data.animate,
-      200,
-      25,
-    );
+    if (canFinish) {
+      drawFlowSliceButton(
+        data.loading.interface,
+        "play",
+        data.loading.position.x,
+        data.loading.position.y,
+        barSize * 4.8,
+        barSize * 1.7,
+      );
+    } else {
+      data.loading.interface.bounds = null;
+      resetShader();
+      noStroke();
+      fill(255, 235, 221, 90);
+      rectMode(CENTER);
+      rect(
+        data.loading.position.x,
+        data.loading.position.y,
+        barSize * 4,
+        12 * scene.ui.scale,
+        6 * scene.ui.scale,
+      );
+      fill(205, 221, 70);
+      rectMode(CORNER);
+      rect(
+        data.loading.position.x - barSize * 2,
+        data.loading.position.y - 6 * scene.ui.scale,
+        barSize * 4 * data.animate,
+        12 * scene.ui.scale,
+        6 * scene.ui.scale,
+      );
+      textAlign(CENTER, BOTTOM);
+      textFont(scene.text.font || scene.font);
+      textSize(20 * scene.ui.scale);
+      fill(255);
+      text(
+        "Loading",
+        data.loading.position.x,
+        data.loading.position.y - 18 * scene.ui.scale,
+      );
+    }
     pop();
   }
 };

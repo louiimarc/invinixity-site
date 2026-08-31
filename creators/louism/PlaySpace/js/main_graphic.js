@@ -1,51 +1,11 @@
-function checkerboardBuffer() {
-  let state = scene.checkerboard;
-  let bufferWidth = max(1, ceil(width));
-  let bufferHeight = max(1, ceil(height));
-  let sizeChanged =
-    state.buffer == null ||
-    state.width != bufferWidth ||
-    state.height != bufferHeight;
-
-  if (state.buffer == null) {
-    state.buffer = createGraphics(bufferWidth, bufferHeight);
-    state.buffer.pixelDensity(1);
-  } else if (sizeChanged) {
-    state.buffer.resizeCanvas(bufferWidth, bufferHeight);
-  }
-
-  if (sizeChanged) {
-    let cellSize = min(bufferWidth, bufferHeight) / 16;
-    let columns = ceil(bufferWidth / cellSize);
-    let rows = ceil(bufferHeight / cellSize);
-    state.buffer.background(125);
-    state.buffer.noStroke();
-    state.buffer.fill(155);
-
-    for (let column = 0; column < columns; column++) {
-      for (let row = 0; row < rows; row++) {
-        if ((column + row) % 2 == 0) {
-          state.buffer.rect(
-            column * cellSize,
-            row * cellSize,
-            cellSize,
-            cellSize,
-          );
-        }
-      }
-    }
-
-    state.width = bufferWidth;
-    state.height = bufferHeight;
-  }
-
-  return state.buffer;
-}
-
 function drawCompositionOuterTint() {
-  if (!["frame", "active"].includes(scene.session.mode)) return;
+  if (!["frame", "active", "secretDemo"].includes(scene.session.mode)) return;
   let state = scene.composition;
-  let bounds = compositionBounds();
+  let editingCard = scene.session.mode == "active" && scene.text.edit;
+  let bounds = editingCard ? creationCardBounds() : compositionBounds();
+  let cornerRadius = editingCard
+    ? creationCardCornerRadius(bounds)
+    : compositionCornerRadius(bounds);
   let backgroundBrightness = constrain(
     scene.session.backgroundColor?.brightness ?? 0.5,
     0,
@@ -59,6 +19,7 @@ function drawCompositionOuterTint() {
     bounds.y,
     bounds.width,
     bounds.height,
+    editingCard ? "creation" : "composition",
     marginGrey,
   ].map((value) => round(value * 10) / 10).join("|");
 
@@ -89,7 +50,7 @@ function drawCompositionOuterTint() {
       bounds.y,
       bounds.width,
       bounds.height,
-      compositionCornerRadius(bounds),
+      cornerRadius,
     );
     context.fill();
     context.restore();
@@ -106,6 +67,13 @@ function drawCompositionOuterTint() {
 
 function draw() {
   updateUiScale();
+  updateSessionCreationTimeout();
+  let useFrameCursor =
+    scene.session.mode == "frame" &&
+    !scene.session.photoFrame.closed &&
+    !scene.session.cameraPrompt.exitConfirming;
+  if (useFrameCursor) noCursor();
+  else cursor(ARROW);
   setUiPointer();
   updateUiPointer();
   updateOptionsWorkspaceLayout();
@@ -120,6 +88,11 @@ function draw() {
   scene.workspace.ortho();
 
   drawSessionWorkspaceBackground();
+  if (["frame", "active", "secretDemo"].includes(scene.session.mode)) {
+    drawSelectedFlowBackground(scene.workspace);
+    drawSelectedFlowCreationCard(scene.workspace);
+  }
+  drawHomeGallery(scene.workspace);
 
   scene.elapsedTime = millis() / 1000.0;
   inout.audio.update();
@@ -136,14 +109,24 @@ function draw() {
   // scene.shader.setUniform("u_resolution", [width, height]);
   // scene.shader.setUniform("u_mouse", [mouseX, mouseY]);
 
-  let composition = compositionBounds();
-  let baseTextSize = min(composition.width, composition.height) / 4;
+  let creationCard = creationCardBounds();
+  let baseTextSize = min(creationCard.width, creationCard.height) / 4;
   scene.workspace.textAlign(CENTER, CENTER);
 
   if (data.loading.ready) {
-    drawLayeredWorkspaceContent(baseTextSize);
-    drawFrameOverlay(scene.workspace);
+    if (scene.session.mode == "secretDemo") {
+      drawCreationDemoContent(baseTextSize);
+    } else {
+      drawLayeredWorkspaceContent(baseTextSize);
+    }
+    if (["frame", "active", "secretDemo"].includes(scene.session.mode)) {
+      drawFrameOverlay(scene.workspace);
+    }
   }
+  drawSessionPhotoCountdownPattern(
+    scene.workspace,
+    scene.session.cameraPrompt.transition,
+  );
   imageMode(CENTER);
   image(scene.workspace, 0, 0, width, height);
   drawCompositionOuterTint();
@@ -160,10 +143,15 @@ function draw() {
   translate(0, 0, scene.layer.ui);
 
   data.loading.bar();
+  drawSecretDemoStatus();
 
   noStroke();
 
   let printButton = uiButtonBounds("left");
+  printButton.y =
+    height / 2 -
+    scene.ui.button.padding * scene.ui.scale -
+    printButton.h / 2;
   scene.ui.textField.position = animateData(
     scene.ui.textField.position,
     scene.text.edit ? 1 : 0,
@@ -175,10 +163,8 @@ function draw() {
     data.loading.ready && scene.session.mode == "active" ? 1 : 0,
     0.125,
   );
-  let controlsHiddenOffset = -(
-    printButton.h +
-    scene.ui.button.padding * scene.ui.scale * 2
-  );
+  let controlsHiddenOffset =
+    printButton.h + scene.ui.button.padding * scene.ui.scale * 2;
   let controlsOffset = map(
     scene.ui.controls.position,
     0,
@@ -197,13 +183,13 @@ function draw() {
     printHiddenX,
   );
   scene.gui.print.armed = scene.ui.pointer.pressTarget == "print";
-  scene.gui.print.update(scene.elapsedTime, uiPointer(), uiPointerActive());
-  scene.gui.print.button(
+  drawFlowSliceButton(
+    scene.gui.print,
+    "finish",
     printButton.x,
     printButton.y,
-    printButton.w,
-    printButton.h,
-    printButton.r,
+    printButton.w * 1.45,
+    printButton.h * 1.35,
   );
 
   drawColorPanel(scene.ui.colorPanel.color);
@@ -214,30 +200,40 @@ function draw() {
   let fieldGap = scene.ui.textField.gap * scene.ui.scale;
   let doneButton = uiButtonBounds("right");
   doneButton.y += controlsOffset;
+  let editDoneY =
+    height / 2 -
+    scene.ui.button.padding * scene.ui.scale -
+    doneButton.h / 2;
+  doneButton.y = lerp(doneButton.y, editDoneY, editTransition);
 
   let fieldHeight = printButton.h;
   let fieldRadius = printButton.r;
-  let fieldVisibleY = printButton.y;
+  let fieldClosedY = printButton.y;
+  let fieldOpenY =
+    -height / 2 +
+    scene.ui.button.padding * scene.ui.scale +
+    fieldHeight / 2;
+  let fieldVisibleY = lerp(fieldClosedY, fieldOpenY, editTransition);
   let doneHiddenX =
     width / 2 + doneButton.w + scene.ui.button.padding * scene.ui.scale;
-  let doneX = map(editTransition, 0, 1, doneHiddenX, doneButton.x);
+  let doneX = map(editTransition, 0, 1, doneHiddenX, 0);
 
   scene.gui.done.armed = scene.ui.pointer.pressTarget == "done";
-  scene.gui.done.update(scene.elapsedTime, uiPointer(), uiPointerActive());
-  scene.gui.done.button(
+  drawFlowSliceButton(
+    scene.gui.done,
+    "nextGreen",
     doneX,
     doneButton.y,
-    doneButton.w,
-    doneButton.h,
-    doneButton.r,
-    scene.text.edit ? 1 : 0,
-    ...scene.ui.actionColors.green,
+    doneButton.w * 1.45,
+    doneButton.h * 1.35,
   );
 
   let doneBounds = scene.gui.done.bounds || doneButton;
   let fieldClosedLeft = printVisibleX + printButton.w / 2 + fieldGap;
   let fieldOpenLeft =
-    -width / 2 + scene.ui.button.padding * scene.ui.scale;
+    -width / 2 +
+    scene.ui.button.padding * scene.ui.scale +
+    138 * scene.ui.scale;
   let fieldLeft = map(
     editTransition,
     0,
@@ -250,11 +246,14 @@ function draw() {
     0,
     1,
     width / 2 - scene.ui.button.padding * scene.ui.scale,
-    doneBounds.x - doneBounds.w / 2 - fieldGap,
+    width / 2 -
+      scene.ui.button.padding * scene.ui.scale -
+      172 * scene.ui.scale,
   );
   let fieldWidth = max(0, fieldRight - fieldLeft);
   let fieldX = (fieldLeft + fieldRight) / 2;
   let closedEdit = uiButtonBounds("right");
+  closedEdit.y = fieldClosedY;
   let editX = map(editTransition, 0, 1, closedEdit.x, fieldX);
   let editY = fieldVisibleY;
   let editWidth = map(editTransition, 0, 1, closedEdit.w, fieldWidth);
@@ -299,7 +298,14 @@ function draw() {
         false,
       );
     } else {
-      scene.gui.edit.button(editX, editY, editWidth, fieldHeight, fieldRadius);
+      drawFlowSliceButton(
+        scene.gui.edit,
+        "edit",
+        editX,
+        editY,
+        editWidth * 1.45,
+        fieldHeight * 1.35,
+      );
       scene.ui.textField.label = "Edit";
     }
   }
@@ -315,6 +321,8 @@ function draw() {
 
   drawCameraSessionFrontUi();
   drawPhotoFrameStage();
+  drawEditorSessionChrome();
+  drawBackgroundFramePicker();
   drawDebugGuides();
 
   ////
@@ -353,12 +361,22 @@ function drawControlSideSwitch() {
   scene.gui.sideSwitch.label = controlsOnRight() ? "<" : ">";
   scene.gui.sideSwitch.armed =
     scene.ui.pointer.pressTarget == "sideSwitch";
-  scene.gui.sideSwitch.update(
-    scene.elapsedTime,
-    uiPointer(),
-    uiPointerActive(),
+  scene.gui.sideSwitch.bounds = { x, y, w: size, h: size };
+  push();
+  resetShader();
+  noStroke();
+  fill(scene.gui.sideSwitch.armed ? color(205, 221, 70) : color(79, 15, 47));
+  circle(x, y + (scene.gui.sideSwitch.armed ? 3 * scale : 0), size);
+  textAlign(CENTER, CENTER);
+  textFont(scene.font);
+  textSize(size * 0.55);
+  fill(scene.gui.sideSwitch.armed ? color(79, 15, 47) : color(255, 235, 221));
+  text(
+    scene.gui.sideSwitch.label,
+    x,
+    y - size * 0.04 + (scene.gui.sideSwitch.armed ? 3 * scale : 0),
   );
-  scene.gui.sideSwitch.button(x, y, size, size, size / 2);
+  pop();
 }
 
 function drawDebugGuides() {
@@ -466,15 +484,16 @@ function drawWordOnTextPath(txt, path, textSizeValue, pathIndex, layerZ = 0) {
 function windowResized() {
   let previousWidth = width;
   let previousHeight = height;
+  let previousCardBounds = creationCardBounds();
   resizeCanvas(windowWidth, windowHeight);
   scene.workspace.resizeCanvas(width * scene.pixScale, height * scene.pixScale);
+  updateUiScale();
   if (previousWidth > 0 && previousHeight > 0) {
-    remapArtworkToComposition(previousWidth, previousHeight);
+    remapArtworkBetweenBounds(previousCardBounds, creationCardBounds());
   }
   scene.session.photoFrame.dirty = true;
   scheduleSessionCacheSave();
   if (["frame", "active"].includes(scene.session.mode)) {
     saveTextMemory();
   }
-  updateUiScale();
 }

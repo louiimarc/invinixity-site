@@ -80,13 +80,78 @@ function smoothClosedPhotoFramePath(points) {
 function resetSessionPhotoFrame() {
   let frame = scene.session.photoFrame;
   frame.points = [];
+  frame.photoPlacement = null;
+  frame.layoutNormalized = false;
   frame.drawing = false;
   frame.closed = false;
   frame.dirty = true;
   frame.transition = 0;
   frame.reviewTransition = 0;
+  frame.startedAt = null;
+  frame.deadlineAt = null;
+  frame.timeoutHandled = false;
+  frame.cursor.x = null;
+  frame.cursor.y = null;
+  frame.cursor.lastMovedAt = 0;
+  frame.cursor.textMix = 0;
   frame.faceAdjustment = null;
   frame.faceRequestId = -1;
+}
+
+function startSessionPhotoFrameStage() {
+  let frame = scene.session.photoFrame;
+  frame.startedAt = millis();
+  frame.deadlineAt = Date.now() + frame.durationSeconds * 1000;
+  frame.timeoutHandled = false;
+  frame.cursor.x = mouseX;
+  frame.cursor.y = mouseY;
+  frame.cursor.lastMovedAt = millis();
+  frame.cursor.textMix = 0;
+}
+
+function sessionPhotoFrameTimerLabel() {
+  let frame = scene.session.photoFrame;
+  let remaining = Number.isFinite(frame.deadlineAt)
+    ? max(0, ceil((frame.deadlineAt - Date.now()) / 1000))
+    : frame.durationSeconds;
+  return `${floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`;
+}
+
+function updateSessionCreationTimeout() {
+  let frame = scene.session.photoFrame;
+  if (
+    frame.timeoutHandled ||
+    !Number.isFinite(frame.deadlineAt) ||
+    !["frame", "active"].includes(scene.session.mode) ||
+    Date.now() < frame.deadlineAt
+  ) return;
+
+  frame.timeoutHandled = true;
+  if (scene.session.mode == "active") {
+    setTextEdit(false);
+    openBackgroundFramePicker();
+    return;
+  }
+  if (frame.closed) {
+    acceptSessionPhotoFrame();
+    setTextEdit(false);
+    openBackgroundFramePicker();
+    return;
+  }
+  let card = creationCardBounds();
+  let inset = min(card.width, card.height) * 0.045;
+  frame.points = [
+    createVector(card.x + inset, card.y + inset),
+    createVector(card.x + card.width - inset, card.y + inset),
+    createVector(card.x + card.width - inset, card.y + card.height - inset),
+    createVector(card.x + inset, card.y + card.height - inset),
+    createVector(card.x + inset, card.y + inset),
+  ];
+  frame.closed = true;
+  frame.dirty = true;
+  acceptSessionPhotoFrame();
+  setTextEdit(false);
+  openBackgroundFramePicker();
 }
 
 function sessionPhotoFrameLength() {
@@ -105,7 +170,7 @@ function sessionPhotoFrameLength() {
 
 function appendSessionPhotoFramePoint(x, y, force = false) {
   let frame = scene.session.photoFrame;
-  let point = constrainPointToComposition(x, y);
+  let point = constrainPointToCreationCard(x, y);
   let previous = frame.points[frame.points.length - 1];
   let minimumDistance = frame.sampleDistance * scene.ui.scale;
   if (
@@ -122,13 +187,16 @@ function appendSessionPhotoFramePoint(x, y, force = false) {
 function beginPhotoFrameGesture() {
   if (
     scene.session.mode != "frame" ||
-    scene.session.photoFrame.closed
+    scene.session.photoFrame.closed ||
+    scene.session.cameraPrompt.exitConfirming ||
+    scene.session.cameraPrompt.exitTransition > 0.05
   ) {
     return false;
   }
-  if (!pointInsideComposition(mouseX, mouseY)) return true;
+  if (!pointInsideCreationCard(mouseX, mouseY)) return false;
 
   let frame = scene.session.photoFrame;
+  frame.cursor.lastMovedAt = millis();
   frame.drawing = true;
   appendSessionPhotoFramePoint(mouseX, mouseY, frame.points.length == 0);
   return true;
@@ -162,7 +230,7 @@ function jitterCloseSessionPhotoFrame() {
     let jitter =
       alternate * jitterAmount * sin(progress * 180) * random(0.35, 1);
     frame.points.push(
-      createVector(
+      constrainPointToCreationCard(
         lerp(end.x, start.x, progress) + normalX * jitter,
         lerp(end.y, start.y, progress) + normalY * jitter,
       ),
@@ -177,6 +245,7 @@ function endPhotoFrameGesture() {
 
   appendSessionPhotoFramePoint(mouseX, mouseY, true);
   frame.drawing = false;
+  frame.cursor.lastMovedAt = millis();
   let start = frame.points[0];
   let end = frame.points[frame.points.length - 1];
   let canClose =
@@ -190,18 +259,8 @@ function endPhotoFrameGesture() {
     let smoothedPoints = smoothClosedPhotoFramePath(frame.points);
     let drawnPoints = resampleClosedPhotoFramePath(smoothedPoints, 128);
     drawnPoints.push(drawnPoints[0].copy());
-    let protectedPoints = protectSessionPhotoFrameFromFaces(drawnPoints);
-    if (scene.session.faceDetection.status == "ready") {
-      frame.faceRequestId = scene.session.faceDetection.requestId;
-    }
     frame.points = drawnPoints;
-    frame.faceAdjustment = {
-      active: sessionPhotoFramePathsDiffer(drawnPoints, protectedPoints),
-      startedAt: millis(),
-      duration: 0.45,
-      source: drawnPoints,
-      target: protectedPoints,
-    };
+    frame.faceAdjustment = null;
     frame.closed = true;
     frame.dirty = true;
     scheduleSessionCacheSave();
@@ -241,17 +300,23 @@ function updateSessionPhotoFrameFaceAdjustment() {
 
 function redrawSessionPhotoFrame() {
   if (scene.session.mode != "frame") return;
+  let startedAt = scene.session.photoFrame.startedAt;
+  let deadlineAt = scene.session.photoFrame.deadlineAt;
   resetSessionPhotoFrame();
+  scene.session.photoFrame.startedAt = startedAt;
+  scene.session.photoFrame.deadlineAt = deadlineAt;
   scheduleSessionCacheSave();
 }
 
 function acceptSessionPhotoFrame() {
   let frame = scene.session.photoFrame;
   if (scene.session.mode != "frame" || !frame.closed) return;
-  scene.session.mode = "active";
+  freezeSessionPhotoFrameLayout();
   scene.ui.pointer.pressTarget = null;
   scene.ui.pointer.pressStartedOnButton = false;
   setTextEdit(true);
+  scene.session.mode = "active";
+  resetEditorHistory();
   saveTextMemory();
   scheduleSessionCacheSave();
 }
@@ -270,12 +335,50 @@ function sessionPhotoFrameBounds(points = scene.session.photoFrame.points) {
     bottom = max(bottom, point.y);
   }
 
-  let size = max(1, right - left, bottom - top);
+  let frameWidth = max(1, right - left);
+  let frameHeight = max(1, bottom - top);
+  let size = max(frameWidth, frameHeight);
   return {
+    left,
+    right,
+    top,
+    bottom,
+    width: frameWidth,
+    height: frameHeight,
     centerX: (left + right) / 2,
     centerY: (top + bottom) / 2,
     size,
   };
+}
+
+function sessionPhotoPlacement(bounds = creationCardBounds()) {
+  let frame = scene.session.photoFrame;
+  if (frame.photoPlacement != null) return frame.photoPlacement;
+  let photo = scene.session.photo;
+  if (photo == null) return null;
+
+  let scale = max(bounds.width / photo.width, bounds.height / photo.height);
+  let photoWidth = photo.width * scale;
+  let photoHeight = photo.height * scale;
+  return {
+    x: bounds.x + bounds.width / 2 - photoWidth / 2,
+    y: bounds.y + bounds.height / 2 - photoHeight / 2,
+    width: photoWidth,
+    height: photoHeight,
+  };
+}
+
+function freezeSessionPhotoFrameLayout() {
+  let frame = scene.session.photoFrame;
+  let placement = sessionPhotoPlacement();
+  if (frame.layoutNormalized || placement == null) return;
+  frame.photoPlacement = { ...placement };
+  frame.layoutNormalized = true;
+  frame.dirty = true;
+}
+
+function normalizeSessionPhotoFrameLayout() {
+  freezeSessionPhotoFrameLayout();
 }
 
 function sessionPhotoFramePathsDiffer(first, second, threshold = 0.25) {
@@ -301,18 +404,15 @@ function sessionPhotoFaceEllipses(points) {
     return [];
   }
 
-  let fit = max(bounds.size / photo.width, bounds.size / photo.height);
-  let photoWidth = photo.width * fit;
-  let photoHeight = photo.height * fit;
-  let photoLeft = bounds.centerX - photoWidth / 2;
-  let photoTop = bounds.centerY - photoHeight / 2;
+  let placement = sessionPhotoPlacement();
+  if (placement == null) return [];
   let protectedFaceRatio = 0.75;
   return detection.boxes.map((box) => {
-    let faceWidth = box.width * photoWidth;
-    let faceHeight = box.height * photoHeight;
+    let faceWidth = box.width * placement.width;
+    let faceHeight = box.height * placement.height;
     return {
-      centerX: photoLeft + (box.x + box.width / 2) * photoWidth,
-      centerY: photoTop + (box.y + box.height / 2) * photoHeight,
+      centerX: placement.x + (box.x + box.width / 2) * placement.width,
+      centerY: placement.y + (box.y + box.height / 2) * placement.height,
       radiusX: faceWidth * 0.5 * protectedFaceRatio,
       radiusY: faceHeight * 0.5 * protectedFaceRatio,
     };
@@ -424,23 +524,7 @@ function applyDetectedFacesToSessionPhotoFrame() {
   ) {
     return;
   }
-
-  let source = frame.points.map((point) => point.copy());
-  let base = frame.faceAdjustment?.active
-    ? frame.faceAdjustment.target
-    : source;
-  let protectedPoints = protectSessionPhotoFrameFromFaces(base);
   frame.faceRequestId = detection.requestId;
-  if (!sessionPhotoFramePathsDiffer(base, protectedPoints)) return;
-
-  frame.faceAdjustment = {
-    active: true,
-    startedAt: millis(),
-    duration: 0.45,
-    source,
-    target: protectedPoints,
-  };
-  frame.dirty = true;
 }
 
 function animatedSessionPhotoFramePoint(points, index, seed = 0) {
@@ -477,9 +561,14 @@ function animatedSessionPhotoFramePoint(points, index, seed = 0) {
     Math.sin(loopPhase * 3 + time * 0.68 + seedPhase * 0.6) *
     jelly.tangentAmount *
     scene.ui.scale;
-  return {
+  let animated = {
     x: point.x + normalX * jitter + (tangentX / tangentLength) * tangentJitter,
     y: point.y + normalY * jitter + (tangentY / tangentLength) * tangentJitter,
+  };
+  let card = creationCardBounds();
+  return {
+    x: constrain(animated.x, card.x, card.x + card.width),
+    y: constrain(animated.y, card.y, card.y + card.height),
   };
 }
 
@@ -536,16 +625,13 @@ function updateSessionPhotoFrameBuffer() {
   context.clip();
 
   let photo = scene.session.photo;
-  let bounds = sessionPhotoFrameBounds();
-  let fit = max(bounds.size / photo.width, bounds.size / photo.height);
-  let photoWidth = photo.width * fit;
-  let photoHeight = photo.height * fit;
+  let placement = sessionPhotoPlacement();
   context.drawImage(
     photo.canvas,
-    bounds.centerX - photoWidth / 2,
-    bounds.centerY - photoHeight / 2,
-    photoWidth,
-    photoHeight,
+    placement.x,
+    placement.y,
+    placement.width,
+    placement.height,
   );
   context.restore();
   frame.dirty = false;
@@ -652,6 +738,177 @@ function drawJumpingPhotoFrameGuide(label, y, textSizeValue) {
   }
 }
 
+function drawSessionPhotoFrameReference() {
+  let photo = scene.session.photo;
+  let frame = scene.session.photoFrame;
+  if (photo == null) return;
+
+  let preview;
+  if (frame.closed) {
+    preview = updateSessionPhotoFrameBuffer();
+  } else {
+    let placement = sessionPhotoPlacement();
+    if (placement == null) return;
+    let bounds = creationCardBounds();
+    let bufferWidth = max(1, round(width));
+    let bufferHeight = max(1, round(height));
+    if (frame.referenceBuffer == null) {
+      frame.referenceBuffer = createGraphics(bufferWidth, bufferHeight);
+      frame.referenceBuffer.pixelDensity(1);
+    } else if (
+      frame.referenceBuffer.width != bufferWidth ||
+      frame.referenceBuffer.height != bufferHeight
+    ) {
+      frame.referenceBuffer.resizeCanvas(bufferWidth, bufferHeight);
+    }
+
+    preview = frame.referenceBuffer;
+    let context = preview.drawingContext;
+    context.clearRect(0, 0, bufferWidth, bufferHeight);
+    context.save();
+    context.beginPath();
+    context.roundRect(
+      bounds.x,
+      bounds.y,
+      bounds.width,
+      bounds.height,
+      creationCardCornerRadius(bounds),
+    );
+    context.clip();
+    context.drawImage(
+      photo.canvas,
+      placement.x,
+      placement.y,
+      placement.width,
+      placement.height,
+    );
+    context.restore();
+  }
+
+  push();
+  resetMatrix();
+  ortho();
+  resetShader();
+  imageMode(CENTER);
+  if (!frame.closed) tint(255, 100);
+  image(preview, 0, 0, width, height);
+  noTint();
+  pop();
+}
+
+function sessionPhotoFrameUiRgb() {
+  let rgb = sessionBackgroundRgb();
+  let luminance = rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+  return luminance > 0.58 ? [29, 29, 29] : [255, 255, 255];
+}
+
+function drawPhotoFrameCardOverlay(card, alpha = 255) {
+  let state = scene.frameOverlay;
+  if (state.artwork?.width <= 1 || state.textMask?.width <= 1) return;
+  let sourceInset = 2;
+  push();
+  resetShader();
+  imageMode(CENTER);
+  noStroke();
+  tint(255, alpha);
+  image(
+    state.artwork,
+    card.x + card.width / 2 - width / 2,
+    card.y + card.height / 2 - height / 2,
+    card.width,
+    card.height,
+    sourceInset,
+    sourceInset,
+    state.artwork.width - sourceInset * 2,
+    state.artwork.height - sourceInset * 2,
+  );
+  let foregroundValue = lerp(29, 255, state.foregroundMix);
+  tint(foregroundValue, alpha);
+  image(
+    state.textMask,
+    card.x + card.width / 2 - width / 2,
+    card.y + card.height / 2 - height / 2,
+    card.width,
+    card.height,
+    sourceInset,
+    sourceInset,
+    state.textMask.width - sourceInset * 2,
+    state.textMask.height - sourceInset * 2,
+  );
+  noTint();
+  pop();
+}
+
+function drawPhotoFramePointer(card, transition, uiRgb) {
+  let frame = scene.session.photoFrame;
+  let cursorState = frame.cursor;
+  let cursorAsset = scene.flowUi.slices.drawCursor;
+  if (
+    cursorAsset?.width <= 1 ||
+    frame.closed ||
+    scene.session.cameraPrompt.exitConfirming
+  ) return;
+
+  if (!Number.isFinite(cursorState.x) || !Number.isFinite(cursorState.y)) {
+    cursorState.x = mouseX;
+    cursorState.y = mouseY;
+    cursorState.lastMovedAt = millis();
+  }
+  if (dist(cursorState.x, cursorState.y, mouseX, mouseY) > 0.5) {
+    cursorState.lastMovedAt = millis();
+  }
+  cursorState.x = mouseX;
+  cursorState.y = mouseY;
+  let textVisible =
+    !frame.drawing &&
+    millis() - cursorState.lastMovedAt >= cursorState.idleDelay;
+  cursorState.textMix = animateData(
+    cursorState.textMix,
+    textVisible ? 1 : 0,
+    textVisible ? 0.16 : 0.35,
+  );
+
+  let pulse = 1 + sin(scene.elapsedTime * 140) * 0.035;
+  let cursorHeight = min(card.height * 0.115, 86 * scene.ui.scale) * pulse;
+  let cursorWidth = cursorHeight * cursorAsset.width / cursorAsset.height;
+  let ringSize = cursorHeight * 1.55;
+  let margin = ringSize * 0.65;
+  let guideX = constrain(
+    cursorState.x,
+    margin,
+    width - margin,
+  ) - width / 2;
+  let guideY = constrain(
+    cursorState.y,
+    margin,
+    height - margin,
+  ) - height / 2;
+
+  push();
+  resetShader();
+  noFill();
+  stroke(uiRgb[0], uiRgb[1], uiRgb[2], 105 * transition);
+  strokeWeight(max(1, scene.ui.scale));
+  circle(guideX, guideY, ringSize);
+  circle(guideX, guideY, ringSize * 0.72);
+  noStroke();
+  tint(255, 255 * transition);
+  imageMode(CENTER);
+  image(cursorAsset, guideX, guideY, cursorWidth, cursorHeight);
+  noTint();
+  fill(
+    uiRgb[0],
+    uiRgb[1],
+    uiRgb[2],
+    235 * transition * cursorState.textMix,
+  );
+  textFont(scene.font);
+  textAlign(CENTER, TOP);
+  textSize(max(11, card.width * 0.038));
+  text("Touch and drag\nanywhere", guideX, guideY + ringSize * 0.58);
+  pop();
+}
+
 function drawPhotoFrameStage() {
   if (scene.session.mode != "frame") return;
 
@@ -661,13 +918,18 @@ function drawPhotoFrameStage() {
   let scale = scene.ui.scale;
   let titleHeight = scene.ui.button.height * scale;
   let padding = scene.ui.button.padding * scale;
-  let titleWidth = min(width - padding * 2, 420 * scale);
-  let titleY = -height / 2 + padding + titleHeight / 2;
-  let titleRadius = scene.ui.button.radius * scale;
   let controlGap = 12 * scale;
-  let buttonWidth = min(width - padding * 2, 260 * scale);
-  let redrawY = height / 2 - padding - titleHeight / 2;
-  let nextY = redrawY - titleHeight - controlGap;
+  let card = creationCardBounds();
+  let titleY = card.y - height / 2 - max(titleHeight * 0.75, padding);
+  let buttonWidth = min(card.width * 0.44, 220 * scale);
+  let controlsY = min(
+    height / 2 - padding - titleHeight / 2,
+    card.y + card.height - height / 2 + titleHeight,
+  );
+  let controlsOffset = buttonWidth / 2 + controlGap / 2;
+  let backgroundRgb = sessionBackgroundRgb().map((channel) => channel * 255);
+  let outerRgb = backgroundRgb.map((channel) => lerp(channel, 255, 0.18));
+  let uiRgb = sessionPhotoFrameUiRgb();
   frame.reviewTransition = animateData(
     frame.reviewTransition,
     frame.closed && !frame.faceAdjustment?.active ? 1 : 0,
@@ -681,24 +943,59 @@ function drawPhotoFrameStage() {
   translate(0, 0, scene.layer.ui + 128);
   rectMode(CENTER);
   noStroke();
-  fill(0, 95 * transition);
+  fill(outerRgb[0], outerRgb[1], outerRgb[2], 255 * transition);
   rect(0, 0, width, height);
+  fill(backgroundRgb[0], backgroundRgb[1], backgroundRgb[2], 255 * transition);
+  rect(
+    card.x + card.width / 2 - width / 2,
+    card.y + card.height / 2 - height / 2,
+    card.width,
+    card.height,
+    creationCardCornerRadius(card),
+  );
   _renderer.GL.clear(_renderer.GL.DEPTH_BUFFER_BIT);
 
-  scene.gui.frameTitle.update(
-    scene.elapsedTime,
-    uiPointer(),
-    uiPointerActive(),
+  drawSessionPhotoFrameReference();
+  drawPhotoFrameCardOverlay(card, 255 * transition);
+
+  let headerY = -height / 2 + padding + titleHeight / 2;
+  let exitWidth = min(width * 0.12, 120 * scale);
+  let exitHeight = exitWidth * 171 / 242;
+  scene.gui.frameExit.armed = scene.ui.pointer.pressTarget == "frameExit";
+  drawFlowSliceButton(
+    scene.gui.frameExit,
+    uiRgb[0] < 128 ? "exitDark" : "exitLight",
+    -width / 2 + padding + exitWidth / 2,
+    headerY,
+    exitWidth,
+    exitHeight,
   );
-  scene.gui.frameTitle.surface(
-    0,
-    titleY,
-    titleWidth,
-    titleHeight,
-    titleRadius,
-  );
+
+  let timerAsset = scene.flowUi.slices.timer;
+  let timerWidth = min(width * 0.15, 150 * scale);
+  let timerHeight = timerWidth * 251 / 469;
+  if (timerAsset?.width > 1) {
+    imageMode(CENTER);
+    image(
+      timerAsset,
+      width / 2 - padding - timerWidth / 2,
+      headerY,
+      timerWidth,
+      timerHeight,
+    );
+    fill(25);
+    textFont(scene.text.font);
+    textAlign(CENTER, CENTER);
+    textSize(timerHeight * 0.48);
+    text(
+      sessionPhotoFrameTimerLabel(),
+      width / 2 - padding - timerWidth / 2,
+      headerY - timerHeight * 0.04,
+    );
+  }
+
   resetShader();
-  fill(255, 255 * transition);
+  fill(uiRgb[0], uiRgb[1], uiRgb[2], 255 * transition);
   textFont(scene.font);
   textAlign(CENTER, CENTER);
   textSize(titleHeight / 1.5);
@@ -715,7 +1012,7 @@ function drawPhotoFrameStage() {
     let secondaryColor = sessionPhotoFrameSecondaryStrokeRgb();
     if (!frame.closed) {
       noFill();
-      stroke(255, 210 * transition);
+      stroke(uiRgb[0], uiRgb[1], uiRgb[2], 210 * transition);
       strokeWeight(max(1, 2 * scale));
       circle(
         start.x - width / 2,
@@ -723,7 +1020,7 @@ function drawPhotoFrameStage() {
         frame.closeRadius * scale * 2,
       );
       noStroke();
-      fill(255, 230 * transition);
+      fill(uiRgb[0], uiRgb[1], uiRgb[2], 230 * transition);
       circle(start.x - width / 2, start.y - height / 2, 10 * scale);
     }
 
@@ -758,55 +1055,41 @@ function drawPhotoFrameStage() {
   if (frame.closed) {
     resetShader();
     noStroke();
-    fill(255);
     let controlTransition = frame.reviewTransition;
     let hiddenY = height / 2 + titleHeight;
-    let animatedNextY = lerp(hiddenY, nextY, controlTransition);
-    let animatedRedrawY = lerp(hiddenY, redrawY, controlTransition);
+    let animatedControlsY = lerp(hiddenY, controlsY, controlTransition);
 
     scene.gui.frameNext.armed =
       scene.ui.pointer.pressTarget == "frameNext";
-    scene.gui.frameNext.update(
-      scene.elapsedTime,
-      uiPointer(),
-      uiPointerActive(),
-    );
-    scene.gui.frameNext.button(
-      0,
-      animatedNextY,
+    drawFlowSliceButton(
+      scene.gui.frameNext,
+      "next",
+      controlsOffset,
+      animatedControlsY,
       buttonWidth,
-      titleHeight,
-      titleRadius,
-      1,
-      ...scene.ui.actionColors.green,
+      titleHeight * 1.2,
     );
 
     scene.gui.frameRedraw.armed =
       scene.ui.pointer.pressTarget == "frameRedraw";
-    scene.gui.frameRedraw.update(
-      scene.elapsedTime,
-      uiPointer(),
-      uiPointerActive(),
-    );
-    scene.gui.frameRedraw.button(
-      0,
-      animatedRedrawY,
+    drawFlowSliceButton(
+      scene.gui.frameRedraw,
+      "redraw",
+      -controlsOffset,
+      animatedControlsY,
       buttonWidth,
-      titleHeight,
-      titleRadius,
-      1,
-      ...scene.ui.actionColors.red,
+      titleHeight * 1.2,
     );
   } else {
     scene.gui.frameNext.bounds = null;
     scene.gui.frameRedraw.bounds = null;
     noStroke();
-    fill(255, 230 * transition);
+    fill(uiRgb[0], uiRgb[1], uiRgb[2], 230 * transition);
     textFont(scene.font);
     let guideTextSize = 48 * scale;
     let instruction =
       points.length == 0
-        ? "Draw one closed loop"
+        ? "Draw one with closed loop!"
         : "Continue until you return to the start";
     drawJumpingPhotoFrameGuide(
       instruction,
@@ -814,5 +1097,7 @@ function drawPhotoFrameStage() {
       guideTextSize,
     );
   }
+  drawPhotoFramePointer(card, transition, uiRgb);
+  drawCameraExitConfirmation(scene.session.cameraPrompt);
   pop();
 }

@@ -72,9 +72,14 @@ async function saveSessionCache() {
     photoHeight: photo.height,
     canvasWidth: width,
     canvasHeight: height,
-    compositionVersion: 1,
+    compositionVersion: 2,
     frameClosed: frame.closed,
     framePoints: frame.points.map((point) => ({ x: point.x, y: point.y })),
+    framePhotoPlacement: frame.photoPlacement == null
+      ? null
+      : { ...frame.photoPlacement },
+    frameLayoutNormalized: frame.layoutNormalized === true,
+    frameDeadlineAt: frame.deadlineAt,
     updatedAt: Date.now(),
   };
   await sessionCacheTransaction("readwrite", (store) => store.put(record));
@@ -147,7 +152,14 @@ async function restoreSessionCache() {
 
     let storedWidth = max(1, record.canvasWidth || width);
     let storedHeight = max(1, record.canvasHeight || height);
-    let fromBounds = record.compositionVersion === 1
+    let fromBounds = record.compositionVersion === 2
+      ? creationCardBounds(
+        storedWidth,
+        storedHeight,
+        scene.ui.controlSide,
+        scene.text.edit,
+      )
+      : record.compositionVersion === 1
       ? compositionBounds(
         storedWidth,
         storedHeight,
@@ -155,7 +167,7 @@ async function restoreSessionCache() {
         scene.text.edit,
       )
       : { x: 0, y: 0, width: storedWidth, height: storedHeight };
-    let toBounds = compositionBounds(
+    let toBounds = creationCardBounds(
       width,
       height,
       scene.ui.controlSide,
@@ -173,6 +185,30 @@ async function restoreSessionCache() {
           .map((point) => remapPointBetweenBounds(point, fromBounds, toBounds))
       : [];
     frame.closed = record.frameClosed === true && frame.points.length > 2;
+    if (record.framePhotoPlacement != null) {
+      let source = record.framePhotoPlacement;
+      let topLeft = remapPointBetweenBounds(
+        { x: source.x, y: source.y },
+        fromBounds,
+        toBounds,
+      );
+      frame.photoPlacement = {
+        x: topLeft.x,
+        y: topLeft.y,
+        width: source.width * toBounds.width / max(1, fromBounds.width),
+        height: source.height * toBounds.height / max(1, fromBounds.height),
+      };
+    } else {
+      frame.photoPlacement = null;
+    }
+    frame.layoutNormalized = record.frameLayoutNormalized === true;
+    frame.deadlineAt = Number.isFinite(record.frameDeadlineAt)
+      ? record.frameDeadlineAt
+      : Date.now() + frame.durationSeconds * 1000;
+    frame.timeoutHandled = false;
+    if (frame.closed && frame.photoPlacement == null) {
+      normalizeSessionPhotoFrameLayout();
+    }
     frame.drawing = false;
     frame.faceAdjustment = null;
     frame.faceRequestId = -1;

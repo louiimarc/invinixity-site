@@ -5,8 +5,8 @@ function defaultSessionBackgroundColor() {
 function sizedFrameOverlaySvg(source) {
   return source.replace(
     '<svg width="100%" height="100%"',
-    `<svg width="${scene.composition.width}" ` +
-      `height="${scene.composition.height}"`,
+    `<svg width="${scene.creationCard.width}" ` +
+      `height="${scene.creationCard.height}"`,
   );
 }
 
@@ -39,7 +39,7 @@ function loadFrameOverlaySvgImage(key, source) {
     url,
     (image) => {
       URL.revokeObjectURL(url);
-      image.resize(scene.composition.width, scene.composition.height);
+      image.resize(scene.creationCard.width, scene.creationCard.height);
       loaded();
     },
     (error) => {
@@ -108,7 +108,7 @@ function drawFrameOverlay(target = scene.workspace, layerZ = 64) {
     frameOverlayForegroundTarget(),
     0.08,
   );
-  let bounds = compositionBounds();
+  let bounds = creationCardBounds();
   let sourceInset = 2;
   target.push();
   target.resetShader();
@@ -209,7 +209,7 @@ function setSessionBackgroundPalettePosition(position) {
 }
 
 function drawSessionWorkspaceBackground() {
-  if (["frame", "active"].includes(scene.session.mode)) {
+  if (["frame", "active", "secretDemo"].includes(scene.session.mode)) {
     let rgb = sessionBackgroundRgb();
     scene.workspace.background(
       rgb[0] * 255,
@@ -221,6 +221,6 @@ function drawSessionWorkspaceBackground() {
 
   scene.workspace.push();
   scene.workspace.imageMode(CENTER);
-  scene.workspace.image(checkerboardBuffer(), 0, 0, width, height);
+  scene.workspace.image(homeGradientBuffer(), 0, 0, width, height);
   scene.workspace.pop();
 }

@@ -54,7 +54,7 @@ class GraphicalUserInterface {
 
   #fitWidth(w, h) {
     push();
-    textFont(scene.font);
+    textFont(scene.text.font || scene.font);
     textSize(h / 1.25);
     let contentWidth = textWidth(this.label);
     if (this.valueVisible) {
@@ -96,7 +96,7 @@ class GraphicalUserInterface {
 
   #clipLabel(label, maxWidth, textSizeValue, align = "start") {
     push();
-    textFont(scene.font);
+    textFont(scene.text.font || scene.font);
     textSize(textSizeValue);
     if (textWidth(label) <= maxWidth) {
       pop();
@@ -257,7 +257,7 @@ class GraphicalUserInterface {
     }
 
     this.#labelBuffer.clear();
-    this.#labelBuffer.textFont(scene.font);
+    this.#labelBuffer.textFont(scene.text.font || scene.font);
     this.#labelBuffer.textSize(h / 1.25);
     this.#labelBuffer.textAlign(CENTER, CENTER);
     this.#labelBuffer.noStroke();

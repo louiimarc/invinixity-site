@@ -1,25 +1,31 @@
 function textGlyphAssetEntries() {
   let sources = {
-    InkSpray: [
-      "A", "E_01", "E_02", "H", "I", "M", "N", "R", "U", "Z",
+    Marker: [
+      "A_1", "A_9", "B_2", "B_3", "C_2", "C_3", "D_2", "D_3",
+      "E_9", "E_10", "E_15", "E_16", "F_2", "F_3", "G_2", "G_3",
+      "H_5", "H_8", "I_5", "I_8", "J_2", "J_3", "K_2", "K_3",
+      "L_1", "L_2", "M_4", "M_6", "N_6", "N_8", "O_2", "O_3",
+      "O_4", "P_1", "P_2", "Q_1", "Q_2", "R_1", "R_8", "S_1",
+      "S_2", "U_1", "U_3", "V_2", "V_3", "W_2", "W_3", "X_2",
+      "Y_1", "Z_7", "Z_10",
     ],
     Pastel: [
-      "A_01", "A_02", "E_01", "E_02", "E_03", "E_04", "H",
-      "I_01", "I_02", "I_03", "J_02", "M_01", "N_01", "N_02",
-      "N_03", "R_01", "R_02", "U_01", "U_02", "Z_01", "Z_02",
-      "Z_03",
+      "1_1", "A_4", "A_5", "A_6", "E_4", "E_5", "E_6", "E_7",
+      "E_8", "H_1", "H_2", "H_3", "H_4", "I_1", "I_2", "I_3",
+      "I_4", "M_2", "M_3", "N_4", "N_5", "R_2", "R_3", "R_4",
+      "R_5", "T_1", "T_2", "U_5", "U_6", "U_7", "Z_2", "Z_3",
+      "Z_4", "Z_5", "Z_6",
     ],
-    MixedMedia: [
-      "A_01", "A_02", "E_01", "E_02", "E_03", "H_01", "H_02", "I",
-      "M", "N_01", "N_02", "R_01", "R_02", "U_01", "U_02", "U_03",
-      "Z_01", "Z_02",
+    Collage: [
+      "A_3", "A_7", "A_8", "E_1", "E_2", "E_3", "E_11", "E_12",
+      "E_13", "E_14", "H_6", "H_7", "I_6", "I_7", "K_1", "M_1",
+      "M_5", "N_1", "N_2", "N_3", "N_7", "R_6", "R_7", "U_2",
+      "U_4", "U_8", "Z_1", "Z_8", "Z_9",
     ],
-    SprayPaint: [
-      "3", "A", "B", "C", "D", "F", "G", "I", "O", "V", "W", "X",
-      "Z",
+    Airbrush: [
+      "2_1", "3_1", "A_2", "B_1", "C_1", "D_1", "F_1", "G_1",
+      "J_1", "O_1", "V_1", "W_1", "X_1",
     ],
-    Marker: ["K"],
-    Humanize: ["L", "P", "Q", "S", "T", "Y"],
   };
   let entries = [];
 
@@ -27,8 +33,8 @@ function textGlyphAssetEntries() {
     for (let name of names) {
       entries.push({
         group,
-        character: name[0],
-        path: `assets/alphabet/vectorized/${group}_${name}.png`,
+        character: name.split("_")[0],
+        path: `assets/poster/glyphs/png/${name}.png`,
       });
     }
   }
@@ -88,10 +94,10 @@ function textGlyphGroupWeights(mix) {
   let x = constrain(mix?.x ?? 0.5, 0, 1);
   let y = constrain(mix?.y ?? 0.5, 0, 1);
   return [
-    { group: "InkSpray", weight: (1 - x) * (1 - y) },
+    { group: "Airbrush", weight: (1 - x) * (1 - y) },
     { group: "Pastel", weight: x * (1 - y) },
-    { group: "MixedMedia", weight: (1 - x) * y },
-    { group: "SprayPaint", weight: x * y },
+    { group: "Collage", weight: (1 - x) * y },
+    { group: "Marker", weight: x * y },
   ];
 }
 

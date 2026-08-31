@@ -1,0 +1,4 @@
+.DS_Store
+.playspace-downloads/
+node_modules/
+npm-debug.log*

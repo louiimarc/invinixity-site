@@ -29,20 +29,6 @@ function colorWheelPickerHue() {
   return 0.25;
 }
 
-function setTextRgbValue(channel, value) {
-  let channelIndex = { red: 0, green: 1, blue: 2 }[channel];
-  if (channelIndex == null) return;
-
-  let color = scene.ui.colorPanel.color;
-  let rgb = hsvToRgbValues(color);
-  rgb[channelIndex] = constrain(value, 0, 1);
-  let nextColor = rgbToHsvValues(rgb, color.hue);
-  scene.ui.colorPanel.color = nextColor;
-  scene.ui.colorPanel.wheelRotation =
-    (colorWheelPickerHue() - nextColor.hue + 1) % 1;
-  scene.ui.colorPanel.wheelVelocity = 0;
-}
-
 function setTextWheelHue(value) {
   scene.ui.colorPanel.color = {
     ...scene.ui.colorPanel.color,
@@ -171,6 +157,7 @@ function updateColorWheelInertia() {
       updateColorWheelHueFromRotation();
       setSessionBackgroundPalette(state.wheelSnapIndex);
       saveTextMemory();
+      recordEditorHistory();
     }
     return;
   }

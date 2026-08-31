@@ -1,0 +1,473 @@
+var downloadHandoff = {
+  storageKey: "playspace.download-handoff.v1",
+  overlay: null,
+  stage: "closed",
+  config: null,
+  downloadUrl: "",
+  posterImageUrl: "",
+  token: "",
+  posterSnapshot: null,
+  backgroundFrameIndex: 0,
+  scanExpiresAt: 0,
+  countdownTimer: null,
+  rotation: {
+    angle: 0,
+    velocity: 0,
+    dragging: false,
+    pointerId: null,
+    lastX: 0,
+    lastPointerAt: 0,
+    lastFrameAt: 0,
+    frameRequest: null,
+    introActive: false,
+    introStartedAt: 0,
+    introDuration: 2400,
+  },
+};
+
+function downloadHandoffElement(selector) {
+  return downloadHandoff.overlay?.querySelector(selector) || null;
+}
+
+function applyDownloadHandoffRotation() {
+  let rotator = downloadHandoffElement(".handoff-poster-rotator");
+  if (rotator == null) return;
+  rotator.style.transform =
+    `rotateY(${downloadHandoff.rotation.angle}deg)`;
+  rotator.classList.toggle(
+    "is-dragging",
+    downloadHandoff.rotation.dragging,
+  );
+}
+
+function updateDownloadHandoffRotation(now) {
+  let state = downloadHandoff.rotation;
+  let elapsed = state.lastFrameAt > 0
+    ? Math.min(0.05, (now - state.lastFrameAt) / 1000)
+    : 0;
+  state.lastFrameAt = now;
+
+  if (
+    downloadHandoff.stage == "download" &&
+    downloadHandoff.overlay?.hidden === false
+  ) {
+    if (state.introActive && !state.dragging) {
+      let progress = Math.min(
+        1,
+        (now - state.introStartedAt) / state.introDuration,
+      );
+      let eased = progress * progress * progress *
+        (progress * (progress * 6 - 15) + 10);
+      state.angle = eased * 360;
+      if (progress >= 1) {
+        state.introActive = false;
+        state.angle = 360;
+      }
+    } else if (!state.dragging) {
+      state.angle += state.velocity * elapsed;
+      state.velocity *= Math.pow(0.94, elapsed * 60);
+      if (Math.abs(state.velocity) < 8) {
+        state.velocity = 0;
+        let target = Math.round(state.angle / 180) * 180;
+        let smoothing = 1 - Math.pow(0.82, elapsed * 60);
+        state.angle += (target - state.angle) * smoothing;
+        if (Math.abs(target - state.angle) < 0.08) state.angle = target;
+      }
+    }
+    applyDownloadHandoffRotation();
+  }
+  state.frameRequest = window.requestAnimationFrame(
+    updateDownloadHandoffRotation,
+  );
+}
+
+function startDownloadHandoffRotation() {
+  let state = downloadHandoff.rotation;
+  state.angle = 0;
+  state.velocity = 0;
+  state.dragging = false;
+  state.pointerId = null;
+  state.lastFrameAt = 0;
+  state.introActive = true;
+  state.introStartedAt = performance.now();
+  applyDownloadHandoffRotation();
+  if (state.frameRequest == null) {
+    state.frameRequest = window.requestAnimationFrame(
+      updateDownloadHandoffRotation,
+    );
+  }
+}
+
+function setupDownloadHandoffRotation() {
+  let rotator = downloadHandoffElement(".handoff-poster-rotator");
+  if (rotator == null) return;
+  let state = downloadHandoff.rotation;
+  rotator.addEventListener("pointerdown", (event) => {
+    if (downloadHandoff.stage != "download") return;
+    event.preventDefault();
+    state.introActive = false;
+    state.dragging = true;
+    state.pointerId = event.pointerId;
+    state.lastX = event.clientX;
+    state.lastPointerAt = event.timeStamp;
+    state.velocity = 0;
+    rotator.setPointerCapture(event.pointerId);
+    applyDownloadHandoffRotation();
+  });
+  rotator.addEventListener("pointermove", (event) => {
+    if (!state.dragging || event.pointerId != state.pointerId) return;
+    event.preventDefault();
+    let deltaX = event.clientX - state.lastX;
+    let elapsed = Math.max(1, event.timeStamp - state.lastPointerAt) / 1000;
+    let deltaAngle = deltaX * 0.45;
+    state.angle += deltaAngle;
+    state.velocity = Math.max(
+      -720,
+      Math.min(720, state.velocity * 0.35 + deltaAngle / elapsed * 0.65),
+    );
+    state.lastX = event.clientX;
+    state.lastPointerAt = event.timeStamp;
+    applyDownloadHandoffRotation();
+  });
+  let finishDrag = (event) => {
+    if (!state.dragging || event.pointerId != state.pointerId) return;
+    state.dragging = false;
+    state.pointerId = null;
+    applyDownloadHandoffRotation();
+  };
+  rotator.addEventListener("pointerup", finishDrag);
+  rotator.addEventListener("pointercancel", finishDrag);
+}
+
+function setupDownloadHandoff() {
+  if (downloadHandoff.overlay != null) return;
+
+  let overlay = document.createElement("section");
+  overlay.id = "download-handoff";
+  overlay.hidden = true;
+  overlay.innerHTML = `
+    <div class="handoff-card" role="dialog" aria-modal="true">
+      <h1 class="handoff-title">Preparing your poster...</h1>
+      <p class="handoff-copy">One moment while we make your download.</p>
+      <div class="handoff-poster-wrap">
+        <div class="handoff-poster-rotator">
+          <div class="handoff-poster-face handoff-poster-front">
+            <img class="handoff-poster" alt="Your finished PlaySpace poster">
+          </div>
+          <div class="handoff-poster-face handoff-poster-back">
+            <img
+              class="handoff-poster-back-art"
+              src="${PLAYSPACE_CARD_BACK_PATH}"
+              alt=""
+            >
+          </div>
+        </div>
+      </div>
+      <div class="handoff-bottom">
+        <div class="handoff-scan" hidden>
+          <div class="handoff-qr-wrap">
+            <img class="handoff-qr" alt="">
+          </div>
+          <div class="handoff-scan-copy">
+            <p class="handoff-detail"></p>
+            <p class="handoff-url" hidden></p>
+            <span class="handoff-countdown" hidden>60</span>
+          </div>
+        </div>
+        <button class="handoff-button" type="button" hidden>Finish</button>
+      </div>
+      <button class="handoff-secondary" type="button" hidden>Try again</button>
+    </div>
+  `;
+  for (let eventName of ["pointerdown", "pointermove", "pointerup", "click"]) {
+    overlay.addEventListener(eventName, (event) => event.stopPropagation());
+  }
+  document.body.appendChild(overlay);
+  downloadHandoff.overlay = overlay;
+  downloadHandoffElement(".handoff-button").addEventListener("click", () => {
+    if (downloadHandoff.stage == "wifi") showPosterDownloadStep();
+    else if (downloadHandoff.stage == "download") completeDownloadHandoff();
+  });
+  downloadHandoffElement(".handoff-secondary").addEventListener(
+    "click",
+    () => beginDownloadHandoff(downloadHandoff.posterSnapshot),
+  );
+  setupDownloadHandoffRotation();
+}
+
+function saveDownloadHandoff(expiresAt) {
+  try {
+    localStorage.setItem(
+      downloadHandoff.storageKey,
+      JSON.stringify({
+        config: downloadHandoff.config,
+        downloadUrl: downloadHandoff.downloadUrl,
+        posterImageUrl: downloadHandoff.posterImageUrl,
+        token: downloadHandoff.token,
+        backgroundFrameIndex: downloadHandoff.backgroundFrameIndex,
+        scanExpiresAt: downloadHandoff.scanExpiresAt,
+        expiresAt,
+        stage: downloadHandoff.config.skipWifi ? "download" : "wifi",
+      }),
+    );
+  } catch (error) {
+    console.warn("Unable to save poster download handoff", error);
+  }
+}
+
+function discardDownloadHandoff() {
+  try {
+    localStorage.removeItem(downloadHandoff.storageKey);
+  } catch (error) {
+    console.warn("Unable to clear poster download handoff", error);
+  }
+}
+
+function restoreDownloadHandoff() {
+  setupDownloadHandoff();
+  try {
+    let saved = JSON.parse(
+      localStorage.getItem(downloadHandoff.storageKey) || "null",
+    );
+    if (
+      saved == null ||
+      !(saved.expiresAt > Date.now()) ||
+      typeof saved.downloadUrl != "string" ||
+      saved.downloadUrl == ""
+    ) {
+      discardDownloadHandoff();
+      return false;
+    }
+    downloadHandoff.config = saved.config;
+    downloadHandoff.downloadUrl = saved.downloadUrl;
+    downloadHandoff.token = saved.token || "";
+    downloadHandoff.posterImageUrl = saved.posterImageUrl ||
+      (downloadHandoff.token == ""
+        ? ""
+        : `/poster/${downloadHandoff.token}.png`);
+    downloadHandoff.backgroundFrameIndex =
+      Number.isInteger(saved.backgroundFrameIndex)
+        ? saved.backgroundFrameIndex
+        : 0;
+    downloadHandoff.scanExpiresAt = saved.scanExpiresAt ||
+      Date.now() + 60000;
+    prepareDownloadHandoffPosterScene();
+    downloadHandoff.overlay.hidden = false;
+    if (saved.stage == "wifi" && !saved.config.skipWifi) showWifiJoinStep();
+    else showPosterDownloadStep();
+    return true;
+  } catch (error) {
+    console.warn("Unable to restore poster download handoff", error);
+    discardDownloadHandoff();
+    return false;
+  }
+}
+
+function setDownloadHandoffProgress(step) {
+  downloadHandoff.overlay.dataset.step = String(step);
+}
+
+function escapeWifiQrValue(value) {
+  return String(value).replaceAll(/([\\;,:"])/g, "\\$1");
+}
+
+function wifiQrPayload(config) {
+  let hidden = config.wifiHidden ? "H:true;" : "";
+  return `WIFI:T:${escapeWifiQrValue(config.wifiSecurity)};S:${escapeWifiQrValue(config.wifiName)};P:${escapeWifiQrValue(config.wifiPassword)};${hidden};`;
+}
+
+function qrImageUrl(text) {
+  return `/api/qr?text=${encodeURIComponent(text)}`;
+}
+
+function dataUrlBlob(dataUrl) {
+  let [header, encoded] = dataUrl.split(",", 2);
+  let mimeType = header.match(/^data:([^;]+)/)?.[1] || "image/png";
+  let binary = atob(encoded);
+  let bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mimeType });
+}
+
+function cardPreviewPosterBlob(snapshot) {
+  if (snapshot == null) throw new Error("The poster preview is unavailable");
+  return dataUrlBlob(snapshot.canvas.toDataURL("image/png"));
+}
+
+async function beginDownloadHandoff(posterSnapshot) {
+  setupDownloadHandoff();
+  downloadHandoff.posterSnapshot = posterSnapshot;
+  downloadHandoff.posterImageUrl = posterSnapshot?.canvas?.toDataURL(
+    "image/png",
+  ) || "";
+  downloadHandoff.backgroundFrameIndex =
+    scene.session.backgroundFrameIndex ?? 0;
+  downloadHandoff.scanExpiresAt = 0;
+  prepareDownloadHandoffPosterScene();
+  downloadHandoff.stage = "preparing";
+  downloadHandoff.overlay.hidden = false;
+  downloadHandoffElement(".handoff-title").textContent =
+    "Preparing your poster...";
+  downloadHandoffElement(".handoff-copy").textContent =
+    "One moment while we make your download.";
+  downloadHandoffElement(".handoff-copy").hidden = false;
+  downloadHandoffElement(".handoff-scan").hidden = true;
+  downloadHandoffElement(".handoff-button").hidden = true;
+  downloadHandoffElement(".handoff-secondary").hidden = true;
+  setDownloadHandoffProgress(1);
+
+  try {
+    let configResponse = await fetch("/api/config", { cache: "no-store" });
+    let posterBlob = cardPreviewPosterBlob(posterSnapshot);
+    if (!configResponse.ok) throw new Error("Download service unavailable");
+    downloadHandoff.config = await configResponse.json();
+
+    let posterResponse = await fetch("/api/posters", {
+      method: "POST",
+      headers: { "Content-Type": "image/png" },
+      body: posterBlob,
+    });
+    if (!posterResponse.ok) throw new Error("Unable to save poster");
+    let session = await posterResponse.json();
+    downloadHandoff.downloadUrl = session.downloadUrl;
+    downloadHandoff.token = session.token;
+    downloadHandoff.posterImageUrl = `/poster/${session.token}.png`;
+    downloadHandoff.scanExpiresAt = Date.now() + 60000;
+    prepareDownloadHandoffPosterScene();
+    saveDownloadHandoff(session.expiresAt);
+    if (downloadHandoff.config.skipWifi) showPosterDownloadStep();
+    else showWifiJoinStep();
+  } catch (error) {
+    console.error("Unable to prepare local poster download", error);
+    showDownloadHandoffError(error);
+  }
+}
+
+function prepareDownloadHandoffPosterScene() {
+  let card = downloadHandoffElement(".handoff-card");
+  if (card != null) card.style.backgroundImage = "";
+  let poster = downloadHandoffElement(".handoff-poster");
+  if (poster != null && downloadHandoff.posterImageUrl != "") {
+    poster.src = downloadHandoff.posterImageUrl;
+  }
+  let back = downloadHandoffElement(".handoff-poster-back");
+  let backgroundPath = PLAYSPACE_CARD_BACK_BACKGROUND_PATHS[
+    downloadHandoff.backgroundFrameIndex
+  ] || PLAYSPACE_CARD_BACK_BACKGROUND_PATHS[0];
+  if (back != null) {
+    back.style.backgroundImage = `url("${backgroundPath}")`;
+  }
+}
+
+function stopDownloadScanCountdown() {
+  if (downloadHandoff.countdownTimer != null) {
+    window.clearInterval(downloadHandoff.countdownTimer);
+    downloadHandoff.countdownTimer = null;
+  }
+}
+
+function updateDownloadScanCountdown() {
+  let countdown = downloadHandoffElement(".handoff-countdown");
+  if (countdown == null) return;
+  let seconds = Math.max(
+    0,
+    Math.ceil((downloadHandoff.scanExpiresAt - Date.now()) / 1000),
+  );
+  countdown.textContent = String(seconds);
+  if (seconds <= 0 && downloadHandoff.stage == "download") {
+    completeDownloadHandoff();
+  }
+}
+
+function startDownloadScanCountdown() {
+  stopDownloadScanCountdown();
+  if (!(downloadHandoff.scanExpiresAt > 0)) {
+    downloadHandoff.scanExpiresAt = Date.now() + 60000;
+  }
+  if (downloadHandoff.scanExpiresAt <= Date.now()) {
+    completeDownloadHandoff();
+    return;
+  }
+  updateDownloadScanCountdown();
+  downloadHandoff.countdownTimer = window.setInterval(
+    updateDownloadScanCountdown,
+    250,
+  );
+}
+
+function showWifiJoinStep() {
+  let config = downloadHandoff.config;
+  downloadHandoff.stage = "wifi";
+  setDownloadHandoffProgress(1);
+  downloadHandoffElement(".handoff-title").textContent =
+    `Please scan to join “${config.wifiName}”`;
+  downloadHandoffElement(".handoff-copy").textContent =
+    "Open your phone camera and point it at this QR code.";
+  downloadHandoffElement(".handoff-copy").hidden = false;
+  let qr = downloadHandoffElement(".handoff-qr");
+  qr.alt = `QR code to join ${config.wifiName} Wi-Fi`;
+  qr.src = qrImageUrl(wifiQrPayload(config));
+  downloadHandoffElement(".handoff-scan").hidden = false;
+  let detail = downloadHandoffElement(".handoff-detail");
+  detail.textContent = `Wi-Fi: ${config.wifiName}`;
+  downloadHandoffElement(".handoff-url").hidden = true;
+  downloadHandoffElement(".handoff-countdown").hidden = true;
+  let button = downloadHandoffElement(".handoff-button");
+  button.textContent = "Next";
+  button.classList.remove("is-final");
+  button.hidden = false;
+}
+
+function showPosterDownloadStep() {
+  downloadHandoff.stage = "download";
+  setDownloadHandoffProgress(2);
+  downloadHandoffElement(".handoff-title").textContent =
+    "Your own Poster is finished!";
+  downloadHandoffElement(".handoff-copy").hidden = true;
+  let qr = downloadHandoffElement(".handoff-qr");
+  qr.alt = "QR code to download your PlaySpace poster";
+  qr.src = qrImageUrl(downloadHandoff.downloadUrl);
+  downloadHandoffElement(".handoff-scan").hidden = false;
+  let detail = downloadHandoffElement(".handoff-detail");
+  detail.textContent = "Scan QR\nto save poster!";
+  let url = downloadHandoffElement(".handoff-url");
+  url.textContent = downloadHandoff.downloadUrl;
+  url.hidden = true;
+  downloadHandoffElement(".handoff-countdown").hidden = false;
+  let button = downloadHandoffElement(".handoff-button");
+  button.textContent = "FINISH";
+  button.classList.add("is-final");
+  button.hidden = false;
+  downloadHandoffElement(".handoff-secondary").hidden = true;
+  startDownloadHandoffRotation();
+  startDownloadScanCountdown();
+}
+
+function showDownloadHandoffError(error) {
+  downloadHandoff.stage = "error";
+  downloadHandoffElement(".handoff-title").textContent =
+    "The download station needs attention";
+  downloadHandoffElement(".handoff-copy").textContent =
+    `Your poster is still available. ${error?.message || "Please try again."}`;
+  downloadHandoffElement(".handoff-scan").hidden = true;
+  downloadHandoffElement(".handoff-button").hidden = true;
+  downloadHandoffElement(".handoff-secondary").hidden = false;
+}
+
+function closeDownloadHandoff() {
+  stopDownloadScanCountdown();
+  downloadHandoff.stage = "closed";
+  downloadHandoff.downloadUrl = "";
+  downloadHandoff.posterImageUrl = "";
+  downloadHandoff.token = "";
+  downloadHandoff.posterSnapshot = null;
+  downloadHandoff.overlay.hidden = true;
+}
+
+function completeDownloadHandoff() {
+  discardDownloadHandoff();
+  finishPlaySession();
+  closeDownloadHandoff();
+}

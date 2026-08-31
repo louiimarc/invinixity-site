@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-PlaySpace is a client-side p5.js poster kiosk. `index.html` is the entry point and loads scripts in dependency order. Shared `scene`, `data`, and `inout` state lives in `js/common_custom.js`; rendering is centered in `js/main_graphic.js`, input in `js/basic_inputs.js`, and controls in `js/gui_elements.js`. Feature modules such as `color_panel.js`, `sound_engine.js`, and `print_preview.js` remain browser globals rather than ES modules. GLSL sources are under `shader/`, while fonts, SVG glyphs, and the app icon are under `assets/`. There is currently no automated test directory.
+PlaySpace is a client-side p5.js poster kiosk. `index.html` is the entry point and loads scripts in dependency order. Shared `scene`, `data`, and `inout` state lives in `js/common_custom.js`; rendering is centered in `js/main_graphic.js`, input in `js/basic_inputs.js`, and controls in `js/gui_elements.js`. Feature modules such as `color_panel.js`, `sound_engine.js`, and `print_preview.js` remain browser globals rather than ES modules. GLSL sources are under `shader/`; runtime assets are grouped by purpose under `assets/` (`audio`, `branding`, `data`, `examples`, `fonts`, `home`, `portraits`, `poster`, and `ui`). There is currently no automated test directory.
 
 ## Build, Test, and Development Commands
 

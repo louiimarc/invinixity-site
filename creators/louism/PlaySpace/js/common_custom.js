@@ -10,7 +10,7 @@ var scene = {
     },
     composition: {
       width: 1080,
-      height: 1350,
+      height: 1920,
       fitScale: 0.8,
       safeInset: 0.08,
       cornerRadius: 0.05,
@@ -18,10 +18,12 @@ var scene = {
       tintKey: "",
       controlPanelWidth: null,
     },
-    checkerboard: {
-      buffer: null,
-      width: 0,
-      height: 0,
+    creationCard: {
+      width: 1080,
+      height: 1350,
+      widthRatio: 0.55,
+      safeInset: 0.08,
+      cornerRadius: 0.05,
     },
     frameOverlay: {
       paletteHexes: [
@@ -33,7 +35,7 @@ var scene = {
         "4D1430",
       ],
       darkForegroundBackgrounds: ["DBDCDA", "7BCBBB", "CDDD46"],
-      sourcePath: "assets/frame_overlay/foreground.svg",
+      sourcePath: "assets/poster/overlay/foreground.svg",
       artwork: null,
       textMask: null,
       foregroundMix: 0,
@@ -56,10 +58,13 @@ var scene = {
         saturation: 0,
         brightness: 0.5,
       },
+      backgroundFrameIndex: null,
       cameraPrompt: {
         open: false,
         closing: false,
         confirming: false,
+        exitConfirming: false,
+        exitTransition: 0,
         transition: 0,
         transitionTarget: 0,
         nextMode: "idle",
@@ -69,6 +74,10 @@ var scene = {
         stream: null,
         buffer: null,
         captureBuffer: null,
+        captureLabelPath: "assets/data/camera_capture_labels.txt",
+        captureLabels: ["Make Your Cover Shot!"],
+        captureLabel: "Make Your Cover Shot!",
+        previousCaptureLabel: null,
         status: "idle",
         error: "",
         requestId: 0,
@@ -80,17 +89,35 @@ var scene = {
           value: 3,
           startedAt: 0,
           lastStep: -1,
+          patternBaseAngle: -45,
+          patternAngle: -45,
+          patternPhaseX: 0,
+          patternPhaseY: 0,
           scale: "harmonic", // "major", "harmonic", or "harmonicMinor"
         },
       },
       photoFrame: {
         points: [],
+        photoPlacement: null,
+        layoutNormalized: false,
         drawing: false,
         closed: false,
         dirty: true,
         buffer: null,
+        referenceBuffer: null,
         transition: 0,
         reviewTransition: 0,
+        startedAt: null,
+        deadlineAt: null,
+        durationSeconds: 120,
+        timeoutHandled: false,
+        cursor: {
+          x: null,
+          y: null,
+          lastMovedAt: 0,
+          idleDelay: 450,
+          textMix: 0,
+        },
         faceAdjustment: null,
         faceRequestId: -1,
         closeRadius: 64,
@@ -192,6 +219,18 @@ function controlSideMix() {
   return constrain(scene.ui.controlSideMix, 0, 1);
 }
 
+function remapTextPathsBetweenBounds(from, to) {
+  for (let path of Object.values(scene.text.paths)) {
+    if (!Array.isArray(path)) continue;
+    for (let point of path) {
+      let mapped = remapPointBetweenBounds(point, from, to);
+      point.x = mapped.x;
+      point.y = mapped.y;
+    }
+  }
+  scene.text.renderPathCache = new WeakMap();
+}
+
 function remapArtworkBetweenBounds(from, to) {
   let frame = scene.session.photoFrame;
   let framePaths = [
@@ -212,15 +251,28 @@ function remapArtworkBetweenBounds(from, to) {
   if (frame.points.length > 0) {
     frame.dirty = true;
   }
-  for (let path of Object.values(scene.text.paths)) {
-    if (!Array.isArray(path)) continue;
-    for (let point of path) {
-      let mapped = remapPointBetweenBounds(point, from, to);
-      point.x = mapped.x;
-      point.y = mapped.y;
+  if (frame.photoPlacement != null) {
+    let topLeft = remapPointBetweenBounds(
+      { x: frame.photoPlacement.x, y: frame.photoPlacement.y },
+      from,
+      to,
+    );
+    frame.photoPlacement.x = topLeft.x;
+    frame.photoPlacement.y = topLeft.y;
+    frame.photoPlacement.width *= to.width / max(1, from.width);
+    frame.photoPlacement.height *= to.height / max(1, from.height);
+    frame.dirty = true;
+  }
+  remapTextPathsBetweenBounds(from, to);
+  let textScaleRatio = min(
+    to.width / max(1, from.width),
+    to.height / max(1, from.height),
+  );
+  for (let [key, value] of Object.entries(scene.text.sizeAnimations)) {
+    if (Number.isFinite(value)) {
+      scene.text.sizeAnimations[key] = value * textScaleRatio;
     }
   }
-  scene.text.renderPathCache = new WeakMap();
 }
 
 function compositionSafeBounds(insetRatio = scene.composition.safeInset) {
@@ -232,6 +284,143 @@ function compositionSafeBounds(insetRatio = scene.composition.safeInset) {
     width: max(1, bounds.width - inset * 2),
     height: max(1, bounds.height - inset * 2),
   };
+}
+
+function creationCardBounds(
+  viewWidth = width,
+  viewHeight = height,
+  controlSide = scene.ui?.controlSide ?? "right",
+  alignToControls =
+    scene.session?.mode == "active" && scene.text?.edit == true,
+  controlMix = scene.ui?.controlSideMix ??
+    (controlSide == "left" ? 0 : 1),
+  controlPanelWidth = null,
+) {
+  if (scene.session?.mode == "frame" && !alignToControls) {
+    let referenceScale = constrain(
+      min(viewWidth / 1280, viewHeight / 720),
+      0.75,
+      1.35,
+    );
+    let workspaceTop = 152 * referenceScale;
+    let workspaceBottom = viewHeight - 92 * referenceScale;
+    let workspaceHeight = max(1, workspaceBottom - workspaceTop);
+    let maximumWidth = viewWidth * 0.42;
+    let scale = min(
+      maximumWidth / scene.creationCard.width,
+      workspaceHeight / scene.creationCard.height,
+    ) * 0.96;
+    let cardWidth = scene.creationCard.width * scale;
+    let cardHeight = scene.creationCard.height * scale;
+    return {
+      x: (viewWidth - cardWidth) / 2,
+      y: workspaceTop + (workspaceHeight - cardHeight) / 2,
+      width: cardWidth,
+      height: cardHeight,
+      scale,
+    };
+  }
+
+  if (alignToControls) {
+    let referenceScale = constrain(
+      min(viewWidth / 1280, viewHeight / 720),
+      0.75,
+      1.35,
+    );
+    let padding = 34 * referenceScale;
+    let panelGap = 28 * referenceScale;
+    let fallbackControlPanelWidth = min(
+      viewWidth * 0.42,
+      386 * referenceScale,
+    );
+    if (controlPanelWidth == null) {
+      let usesCurrentViewport = viewWidth == width && viewHeight == height;
+      controlPanelWidth = usesCurrentViewport &&
+        Number.isFinite(scene.composition.controlPanelWidth)
+        ? scene.composition.controlPanelWidth
+        : fallbackControlPanelWidth;
+    }
+    let workspaceWidth = max(
+      scene.creationCard.width * 0.15,
+      viewWidth - padding * 2 - controlPanelWidth - panelGap,
+    );
+    let leftCenterX = padding + workspaceWidth / 2;
+    let rightCenterX = viewWidth - padding - workspaceWidth / 2;
+    let workspaceCenterX = lerp(rightCenterX, leftCenterX, controlMix);
+    let workspaceTop = 126 * referenceScale;
+    let workspaceBottom = viewHeight - 82 * referenceScale;
+    let workspaceHeight = max(1, workspaceBottom - workspaceTop);
+    let scale = min(
+      workspaceWidth / scene.creationCard.width,
+      workspaceHeight / scene.creationCard.height,
+    ) * 0.96;
+    let cardWidth = scene.creationCard.width * scale;
+    let cardHeight = scene.creationCard.height * scale;
+    return {
+      x: workspaceCenterX - cardWidth / 2,
+      y: workspaceTop + (workspaceHeight - cardHeight) / 2,
+      width: cardWidth,
+      height: cardHeight,
+      scale,
+    };
+  }
+
+  let poster = compositionBounds(
+    viewWidth,
+    viewHeight,
+    controlSide,
+    alignToControls,
+    controlMix,
+    controlPanelWidth,
+  );
+  let cardWidth = poster.width * scene.creationCard.widthRatio;
+  let cardHeight =
+    cardWidth * scene.creationCard.height / scene.creationCard.width;
+  if (cardHeight > poster.height) {
+    cardHeight = poster.height;
+    cardWidth =
+      cardHeight * scene.creationCard.width / scene.creationCard.height;
+  }
+  return {
+    x: poster.x + (poster.width - cardWidth) / 2,
+    y: poster.y + (poster.height - cardHeight) / 2,
+    width: cardWidth,
+    height: cardHeight,
+    scale: cardWidth / scene.creationCard.width,
+  };
+}
+
+function creationCardSafeBounds(insetRatio = scene.creationCard.safeInset) {
+  let bounds = creationCardBounds();
+  let inset = min(bounds.width, bounds.height) * insetRatio;
+  return {
+    x: bounds.x + inset,
+    y: bounds.y + inset,
+    width: max(1, bounds.width - inset * 2),
+    height: max(1, bounds.height - inset * 2),
+  };
+}
+
+function creationCardCornerRadius(bounds = creationCardBounds()) {
+  return min(bounds.width, bounds.height) * scene.creationCard.cornerRadius;
+}
+
+function pointInsideCreationCard(x, y, safe = false) {
+  let bounds = safe ? creationCardSafeBounds() : creationCardBounds();
+  return (
+    x >= bounds.x &&
+    x <= bounds.x + bounds.width &&
+    y >= bounds.y &&
+    y <= bounds.y + bounds.height
+  );
+}
+
+function constrainPointToCreationCard(x, y, safe = false) {
+  let bounds = safe ? creationCardSafeBounds() : creationCardBounds();
+  return createVector(
+    constrain(x, bounds.x, bounds.x + bounds.width),
+    constrain(y, bounds.y, bounds.y + bounds.height),
+  );
 }
 
 function compositionCornerRadius(bounds = compositionBounds()) {
@@ -270,9 +459,14 @@ function remapArtworkToComposition(
 ) {
   if (!(fromWidth > 0 && fromHeight > 0)) return;
   let from = fromComposition
-    ? compositionBounds(fromWidth, fromHeight)
+    ? creationCardBounds(
+      fromWidth,
+      fromHeight,
+      scene.ui.controlSide,
+      scene.text.edit,
+    )
     : { x: 0, y: 0, width: fromWidth, height: fromHeight };
-  let to = compositionBounds();
+  let to = creationCardBounds();
 
   remapArtworkBetweenBounds(from, to);
 }
@@ -297,14 +491,14 @@ function updateControlSideTransition() {
   let current = controlSideMix();
   if (abs(current - target) < 0.0005) {
     if (current != target) {
-      let from = compositionBounds(
+      let from = creationCardBounds(
         width,
         height,
         scene.ui.controlSide,
         scene.text.edit,
         current,
       );
-      let to = compositionBounds(
+      let to = creationCardBounds(
         width,
         height,
         scene.ui.controlSide,
@@ -331,14 +525,14 @@ function updateControlSideTransition() {
   }
 
   let next = animateData(current, target, 0.18);
-  let from = compositionBounds(
+  let from = creationCardBounds(
     width,
     height,
     scene.ui.controlSide,
     scene.text.edit,
     current,
   );
-  let to = compositionBounds(
+  let to = creationCardBounds(
     width,
     height,
     scene.ui.controlSide,
@@ -511,8 +705,8 @@ scene.ui = {
     position: 0,
     bounds: null,
     active: false,
-    detent: 1,
-    progress: 1,
+    detent: 0,
+    progress: 0,
     resize: 1,
     resizing: false,
     resizeMoved: false,
@@ -537,16 +731,26 @@ scene.ui = {
     widths: Object.create(null),
     positions: Object.create(null),
   },
+  editorHistory: {
+    past: [],
+    future: [],
+    limit: 40,
+    restoring: false,
+    lastKey: "",
+  },
   printPreview: {
     open: false,
     pending: false,
+    autoDownload: false,
     snapshot: null,
+    posterSnapshot: null,
     layers: [],
-    depthTotal: 28,
+    depthTotal: 2.4,
     transition: 0,
     transitionTarget: 0,
     closing: false,
     completeSession: false,
+    saveAsExample: false,
     introSpin: {
       active: false,
       startedAt: 0,
@@ -584,9 +788,6 @@ scene.ui = {
       startPos: 0,
       step: 24,
     },
-  },
-  slider: {
-    active: null,
   },
   pointer: {
     target: { x: 0, y: 0 },
@@ -667,16 +868,12 @@ function uiButtonBounds(side = "left") {
   return { x, y, w, h, r };
 }
 
-function horizontalSliderValueFromPointer(bounds, pointerX = mouseX) {
-  let x = pointerX - width / 2;
-  return constrain((x - (bounds.x - bounds.w / 2)) / bounds.w, 0, 1);
-}
-
 function setTextScaleValue(value) {
   let entry = textWordEntries()[scene.text.activeWord];
   if (entry == null) return;
   scene.text.sizes[entry.key] = constrain(value, 0, 1);
   saveTextMemory();
+  recordEditorHistory();
 }
 
 function pointerInsideBounds(bounds) {
@@ -736,6 +933,41 @@ function setupTextInput() {
   if (scene.text.input == null) return;
 
   scene.text.input.value = scene.text.buffer;
+  scene.text.input.addEventListener(
+    "beforeinput",
+    (event) => {
+      if (typeof event.data != "string") return;
+      let symbol = ["π", "ø"].find((value) => event.data.includes(value));
+      if (symbol == null) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (symbol == "π" && typeof toggleSecretSessionMode == "function") {
+        toggleSecretSessionMode();
+      } else if (symbol == "ø" && typeof toggleSecretDemo == "function") {
+        toggleSecretDemo();
+      }
+    },
+    true,
+  );
+  scene.text.input.addEventListener(
+    "input",
+    (event) => {
+      let symbol = ["π", "ø"].find((value) =>
+        scene.text.input.value.includes(value)
+      );
+      if (symbol == null) return;
+      scene.text.input.value = scene.text.input.value.replaceAll(symbol, "");
+      let position = scene.text.input.value.length;
+      scene.text.input.setSelectionRange(position, position);
+      event.stopImmediatePropagation();
+      if (symbol == "π" && typeof toggleSecretSessionMode == "function") {
+        toggleSecretSessionMode();
+      } else if (symbol == "ø" && typeof toggleSecretDemo == "function") {
+        toggleSecretDemo();
+      }
+    },
+    true,
+  );
   scene.text.input.addEventListener("keydown", blockTextInputReturn);
   scene.text.input.addEventListener("input", syncTextFromInput);
   scene.text.input.addEventListener("compositionend", syncTextFromInput);
@@ -778,6 +1010,7 @@ function syncTextFromInput(event) {
   prefetchTextGlyphsForCurrentWords();
   syncTextCursorFromInput();
   saveTextMemory();
+  recordEditorHistory();
 }
 
 function syncTextCursorFromInput(event) {
@@ -899,7 +1132,7 @@ function setTextEdit(value) {
   let nextEdit = Boolean(value);
   let editChanged = scene.text.edit != nextEdit;
   let from = editChanged
-    ? compositionBounds(
+    ? creationCardBounds(
       width,
       height,
       scene.ui.controlSide,
@@ -917,8 +1150,13 @@ function setTextEdit(value) {
   }
 
   scene.text.edit = nextEdit;
+  if (editChanged && nextEdit) {
+    scene.ui.texturePad.detent = 0;
+    scene.ui.texturePad.progress = 0;
+    scene.ui.texturePad.resizing = false;
+  }
   if (editChanged) {
-    let to = compositionBounds(
+    let to = creationCardBounds(
       width,
       height,
       scene.ui.controlSide,
@@ -954,12 +1192,13 @@ function saveTextMemory() {
       colors: { ...scene.text.colors },
       sizes: { ...scene.text.sizes },
       backgroundPaletteIndex: scene.ui.colorPanel.selectedPaletteIndex,
+      backgroundFrameIndex: scene.session.backgroundFrameIndex,
       textureMixes: { ...scene.text.textureMixes },
       layerOrder: [...scene.text.layerOrder],
       editing: scene.text.edit,
       canvasWidth: width,
       canvasHeight: height,
-      compositionVersion: 1,
+      compositionVersion: 2,
       paths,
     };
     localStorage.setItem(scene.text.storageKey, JSON.stringify(memory));
@@ -988,6 +1227,13 @@ function loadTextMemory() {
     scene.text.cursor.preferredColumn = currentColumn();
     if (Number.isFinite(memory.backgroundPaletteIndex)) {
       setSessionBackgroundPalette(memory.backgroundPaletteIndex, true);
+    }
+    if (Number.isInteger(memory.backgroundFrameIndex)) {
+      scene.session.backgroundFrameIndex = constrain(
+        memory.backgroundFrameIndex,
+        0,
+        PLAYSPACE_FLOW_BACKGROUND_PATHS.length - 1,
+      );
     }
     scene.text.textureMixes = Object.create(null);
     if (memory.textureMixes != null && typeof memory.textureMixes == "object") {
@@ -1062,7 +1308,14 @@ function loadTextMemory() {
     }
     if (memory.canvasWidth > 0 && memory.canvasHeight > 0) {
       let storedEditing = memory.editing === true;
-      let from = memory.compositionVersion === 1
+      let from = memory.compositionVersion === 2
+        ? creationCardBounds(
+          memory.canvasWidth,
+          memory.canvasHeight,
+          scene.ui.controlSide,
+          storedEditing,
+        )
+        : memory.compositionVersion === 1
         ? compositionBounds(
           memory.canvasWidth,
           memory.canvasHeight,
@@ -1075,13 +1328,13 @@ function loadTextMemory() {
           width: memory.canvasWidth,
           height: memory.canvasHeight,
         };
-      let to = compositionBounds(
+      let to = creationCardBounds(
         width,
         height,
         scene.ui.controlSide,
         storedEditing,
       );
-      remapArtworkBetweenBounds(from, to);
+      remapTextPathsBetweenBounds(from, to);
     }
     syncTextPathAssignments();
     scene.text.activeWord = firstWordWithoutPath();
@@ -1094,6 +1347,7 @@ function loadTextMemory() {
 }
 
 function clearTextMemory() {
+  scene.session.backgroundFrameIndex = null;
   scene.text.buffer = "";
   scene.text.cursor.pos = 0;
   scene.text.cursor.preferredColumn = 0;
@@ -1107,8 +1361,8 @@ function clearTextMemory() {
   scene.text.layerOrder = ["photo"];
   scene.ui.layerBar.selectedKey = null;
   scene.ui.layerBar.dragging = false;
-  scene.ui.texturePad.detent = 1;
-  scene.ui.texturePad.progress = 1;
+  scene.ui.texturePad.detent = 0;
+  scene.ui.texturePad.progress = 0;
   scene.ui.texturePad.resize = 1;
   scene.ui.texturePad.resizing = false;
   scene.ui.texturePad.resizeMoved = false;
@@ -1118,6 +1372,135 @@ function clearTextMemory() {
   syncInputFromText();
 
   discardSavedTextMemory();
+  clearEditorHistory();
+}
+
+function editorHistorySnapshot() {
+  let paths = Object.create(null);
+  for (let [key, path] of Object.entries(scene.text.paths)) {
+    if (!Array.isArray(path)) continue;
+    paths[key] = path.map((point) => ({ x: point.x, y: point.y }));
+  }
+  return {
+    buffer: scene.text.buffer,
+    cursorPos: scene.text.cursor.pos,
+    paths,
+    colors: JSON.parse(JSON.stringify(scene.text.colors)),
+    sizes: { ...scene.text.sizes },
+    textureMixes: JSON.parse(JSON.stringify(scene.text.textureMixes)),
+    layerOrder: [...scene.text.layerOrder],
+    backgroundColor: { ...scene.session.backgroundColor },
+    backgroundPaletteIndex: scene.ui.colorPanel.selectedPaletteIndex,
+    selectedKey: scene.ui.layerBar.selectedKey,
+  };
+}
+
+function editorHistorySnapshotKey(snapshot) {
+  return JSON.stringify(snapshot);
+}
+
+function clearEditorHistory() {
+  let history = scene.ui?.editorHistory;
+  if (history == null) return;
+  history.past = [];
+  history.future = [];
+  history.lastKey = "";
+  history.restoring = false;
+}
+
+function resetEditorHistory() {
+  clearEditorHistory();
+  recordEditorHistory();
+}
+
+function recordEditorHistory() {
+  let history = scene.ui.editorHistory;
+  if (history.restoring || scene.session.mode != "active") return false;
+  let snapshot = editorHistorySnapshot();
+  let key = editorHistorySnapshotKey(snapshot);
+  if (key == history.lastKey) return false;
+  history.past.push(snapshot);
+  if (history.past.length > history.limit) history.past.shift();
+  history.future = [];
+  history.lastKey = key;
+  return true;
+}
+
+function restoreEditorHistorySnapshot(snapshot) {
+  if (snapshot == null) return false;
+  let history = scene.ui.editorHistory;
+  history.restoring = true;
+  try {
+    scene.text.buffer = snapshot.buffer;
+    scene.text.cursor.pos = constrain(
+      snapshot.cursorPos,
+      0,
+      scene.text.buffer.length,
+    );
+    scene.text.paths = Object.create(null);
+    for (let [key, path] of Object.entries(snapshot.paths || {})) {
+      scene.text.paths[key] = path.map((point) =>
+        createVector(point.x, point.y)
+      );
+    }
+    scene.text.renderPathCache = new WeakMap();
+    scene.text.colors = Object.assign(
+      Object.create(null),
+      JSON.parse(JSON.stringify(snapshot.colors || {})),
+    );
+    scene.text.sizes = Object.assign(
+      Object.create(null),
+      snapshot.sizes || {},
+    );
+    scene.text.textureMixes = Object.assign(
+      Object.create(null),
+      JSON.parse(JSON.stringify(snapshot.textureMixes || {})),
+    );
+    scene.text.layerOrder = [...(snapshot.layerOrder || [])];
+    scene.session.backgroundColor = { ...snapshot.backgroundColor };
+    scene.ui.colorPanel.selectedPaletteIndex =
+      snapshot.backgroundPaletteIndex;
+    scene.ui.layerBar.selectedKey = snapshot.selectedKey;
+    scene.text.activeWord = layerItemForKey(snapshot.selectedKey)?.wordIndex ??
+      firstWordWithoutPath();
+    scene.text.pathEditArmed = scene.text.activeWord >= 0;
+    syncInputFromText();
+    syncLayerOrder();
+    saveTextMemory();
+    scheduleSessionCacheSave();
+  } finally {
+    history.restoring = false;
+  }
+  history.lastKey = editorHistorySnapshotKey(snapshot);
+  return true;
+}
+
+function undoEditorChange() {
+  let history = scene.ui.editorHistory;
+  if (history.past.length <= 1) return false;
+  history.future.push(history.past.pop());
+  return restoreEditorHistorySnapshot(history.past[history.past.length - 1]);
+}
+
+function redoEditorChange() {
+  let history = scene.ui.editorHistory;
+  if (history.future.length == 0) return false;
+  let snapshot = history.future.pop();
+  history.past.push(snapshot);
+  return restoreEditorHistorySnapshot(snapshot);
+}
+
+function clearAllTextPaths() {
+  if (Object.keys(scene.text.paths).length == 0) return false;
+  scene.text.paths = Object.create(null);
+  scene.text.renderPathCache = new WeakMap();
+  scene.text.activeWord = firstWordWithoutPath();
+  scene.text.pathEditArmed = scene.text.activeWord >= 0;
+  scene.ui.layerBar.selectedKey =
+    textWordEntries()[scene.text.activeWord]?.key ?? null;
+  saveTextMemory();
+  recordEditorHistory();
+  return true;
 }
 
 function discardSavedTextMemory() {
@@ -1268,12 +1651,18 @@ function textScaleValueForWordIndex(wordIndex) {
 function textSizeForWordIndex(wordIndex, baseSize) {
   let entry = textWordEntries()[wordIndex];
   let value = textScaleValueForWordIndex(wordIndex);
+  let card = creationCardBounds();
+  let cardScale = min(
+    card.width / scene.creationCard.width,
+    card.height / scene.creationCard.height,
+  );
+  let scaleRange = scene.content.text.scaleRange * cardScale;
   let target = map(
     value,
     0,
     1,
-    -scene.content.text.scaleRange,
-    scene.content.text.scaleRange,
+    -scaleRange,
+    scaleRange,
   );
   if (entry == null) return baseSize + target;
 

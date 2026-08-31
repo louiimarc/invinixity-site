@@ -1,5 +1,6 @@
-function requestPrintPreview() {
+function requestPrintPreview(autoDownload = false) {
   scene.ui.printPreview.pending = true;
+  scene.ui.printPreview.autoDownload = autoDownload;
 }
 
 function cardPreviewSnapshot(image, fullResolution = false) {
@@ -55,6 +56,7 @@ function captureCardPreviewLayers(liveBaseSnapshot) {
   let originalWorkspace = scene.workspace;
   let captureBuffer = setupCardPreviewCaptureBuffer();
   let baseSnapshot = null;
+  let posterSnapshot = cardPreviewSnapshot(originalWorkspace, true);
   let layers = [];
 
   try {
@@ -74,7 +76,8 @@ function captureCardPreviewLayers(liveBaseSnapshot) {
     captureBuffer.pop();
     baseSnapshot = cardPreviewSnapshot(captureBuffer, true);
 
-    let baseTextSize = min(width, height) / 4;
+    let creationCard = creationCardBounds();
+    let baseTextSize = min(creationCard.width, creationCard.height) / 4;
     let order = syncLayerOrder();
     for (let key of order) {
       let item = layerItemForKey(key);
@@ -109,10 +112,10 @@ function captureCardPreviewLayers(liveBaseSnapshot) {
     });
   } finally {
     scene.workspace = originalWorkspace;
-    captureBuffer.remove();
   }
 
   state.snapshot = baseSnapshot;
+  state.posterSnapshot = posterSnapshot;
   state.layers = layers;
 }
 
@@ -122,11 +125,32 @@ function capturePrintPreview(liveBaseSnapshot) {
 
   captureCardPreviewLayers(liveBaseSnapshot);
   state.pending = false;
+  if (state.autoDownload) {
+    state.autoDownload = false;
+    state.open = false;
+    state.transition = 0;
+    state.transitionTarget = 0;
+    captureCurrentCreationRecipe();
+    if (scene.secretSession.recording) {
+      saveSpecialSessionExample(state.posterSnapshot)
+        .then(() => finishPlaySession())
+        .catch((error) => {
+          console.error("Unable to save PlaySpace example", error);
+          scene.secretSession.recording = true;
+          scene.session.mode = "active";
+          setTextEdit(false);
+        });
+    } else {
+      beginDownloadHandoff(state.posterSnapshot);
+    }
+    return;
+  }
   state.open = true;
   state.transition = 0;
   state.transitionTarget = 1;
   state.closing = false;
   state.completeSession = false;
+  state.saveAsExample = false;
   state.introSpin.active = true;
   state.introSpin.startedAt = millis();
   state.rotation.x = 0;
@@ -301,6 +325,59 @@ function drawCardPreviewSticker(snapshot, widthValue, heightValue, depth) {
   pop();
 }
 
+function drawPrintPreviewBack(
+  paperWidth,
+  paperHeight,
+  paperRadius,
+  contentWidth,
+  contentHeight,
+  contentRadius,
+) {
+  let selectedIndex = Number.isInteger(scene.session.backgroundFrameIndex)
+    ? scene.session.backgroundFrameIndex
+    : 0;
+  let background = scene.flowUi.cardBackBackgrounds[selectedIndex] ||
+    scene.flowUi.cardBackBackgrounds[0] ||
+    scene.flowUi.backgrounds[selectedIndex];
+  let artwork = scene.flowUi.cardBack;
+
+  fill(255);
+  rectMode(CENTER);
+  rect(0, 0, paperWidth, paperHeight, paperRadius);
+
+  push();
+  translate(0, 0, -0.75);
+  rotateY(180);
+  noStroke();
+  textureMode(NORMAL);
+  if (background?.width > 1 && background?.height > 1) {
+    let sourceAspect = background.width / background.height;
+    let targetAspect = contentWidth / contentHeight;
+    let uInset = sourceAspect > targetAspect
+      ? (1 - targetAspect / sourceAspect) / 2
+      : 0;
+    let vInset = sourceAspect < targetAspect
+      ? (1 - sourceAspect / targetAspect) / 2
+      : 0;
+    texture(background);
+    beginShape();
+    vertex(-contentWidth / 2, -contentHeight / 2, 0, uInset, vInset);
+    vertex(contentWidth / 2, -contentHeight / 2, 0, 1 - uInset, vInset);
+    vertex(contentWidth / 2, contentHeight / 2, 0, 1 - uInset, 1 - vInset);
+    vertex(-contentWidth / 2, contentHeight / 2, 0, uInset, 1 - vInset);
+    endShape(CLOSE);
+  } else {
+    fill(200);
+    rect(0, 0, contentWidth, contentHeight, contentRadius);
+  }
+  if (artwork?.width > 1 && artwork?.height > 1) {
+    translate(0, 0, 0.02);
+    texture(artwork);
+    rect(0, 0, contentWidth, contentHeight, contentRadius);
+  }
+  pop();
+}
+
 function drawPrintPreviewPlane(
   snapshot,
   layers,
@@ -353,36 +430,26 @@ function drawPrintPreviewPlane(
         layers[index].snapshot,
         contentWidth,
         contentHeight,
-        1.5 + layerGap * (index + 1),
+        0.9 + layerGap * (index + 1),
       );
     }
   } else {
-    fill(200);
-    rectMode(CENTER);
-    rect(0, 0, paperWidth, paperHeight, paperRadius);
-    push();
-    translate(0, 0, -0.75);
-    rotateY(180);
-    resetShader();
-    textFont(scene.text.font);
-    textAlign(CENTER, CENTER);
-    let watermarkSize = paperHeight * 0.1;
-    textSize(watermarkSize);
-    if (textWidth("PlaySpace") > paperWidth * 0.76) {
-      watermarkSize *=
-        (paperWidth * 0.76) / textWidth("PlaySpace");
-      textSize(watermarkSize);
-    }
-    fill(70, 150);
-    text("PlaySpace", 0, -watermarkSize / 10);
-    pop();
+    drawPrintPreviewBack(
+      paperWidth,
+      paperHeight,
+      paperRadius,
+      contentWidth,
+      contentHeight,
+      contentRadius,
+    );
   }
   pop();
 }
 
 function printPreviewPaperSize(snapshotAspect) {
-  let maximumWidth = width * 0.25;
-  let maximumHeight = height * 0.25;
+  let scale = scene.ui.scale;
+  let maximumWidth = max(120 * scale, width - 140 * scale);
+  let maximumHeight = max(180 * scale, height - 170 * scale);
   let paperWidth;
   let paperHeight;
   let contentWidth;
@@ -423,14 +490,29 @@ function drawPrintPreview() {
   );
   if (state.closing && state.transition < 0.01) {
     let completeSession = state.completeSession;
+    let saveAsExample = state.saveAsExample;
+    let completedPosterSnapshot = state.posterSnapshot;
     state.transition = 0;
     state.open = false;
     state.closing = false;
     state.completeSession = false;
+    state.saveAsExample = false;
     state.snapshot = null;
+    state.posterSnapshot = null;
     state.layers = [];
     if (completeSession) {
-      finishPlaySession();
+      if (saveAsExample) {
+        saveSpecialSessionExample(completedPosterSnapshot)
+          .then(() => finishPlaySession())
+          .catch((error) => {
+            console.error("Unable to save PlaySpace example", error);
+            scene.secretSession.recording = true;
+            scene.session.mode = "active";
+            setTextEdit(false);
+          });
+      } else {
+        beginDownloadHandoff(completedPosterSnapshot);
+      }
     } else {
       scene.session.mode = "active";
       setTextEdit(true);
@@ -443,18 +525,11 @@ function drawPrintPreview() {
 
   let scale = scene.ui.scale;
   let padding = scene.ui.button.padding * scale;
-  let titleHeight = scene.ui.button.height * scale;
   let buttonHeight = scene.ui.button.height * scale;
   let buttonWidth = scene.ui.button.width * scale;
-  let radius = scene.ui.button.radius * scale;
-  let titleWidth = min(width - padding * 2, 420 * scale);
   let snapshotAspect = state.snapshot.width / state.snapshot.height;
   let paperSize = printPreviewPaperSize(snapshotAspect);
 
-  let titleVisibleY =
-    -height / 2 + padding * 2 + titleHeight * 1.5;
-  let titleHiddenY = -height / 2 - padding - titleHeight / 2;
-  let titleY = lerp(titleHiddenY, titleVisibleY, state.transition);
   let buttonVisibleY = height / 2 - padding - buttonHeight / 2;
   let buttonHiddenY = height / 2 + padding + buttonHeight / 2;
   let buttonY = lerp(buttonHiddenY, buttonVisibleY, state.transition);
@@ -462,22 +537,21 @@ function drawPrintPreview() {
   let cancelX = -buttonGap / 2 - buttonWidth / 2;
   let okX = buttonGap / 2 + buttonWidth / 2;
   let planeHiddenY = height / 2 + paperSize.height / 2 + padding;
-  let planeY = lerp(planeHiddenY, 0, state.transition);
+  let planeVisibleY = -44 * scale;
+  let planeY = lerp(planeHiddenY, planeVisibleY, state.transition);
 
   push();
   translate(0, 0, 128);
   resetShader();
   _renderer.GL.disable(_renderer.GL.CULL_FACE);
   _renderer.GL.clear(_renderer.GL.DEPTH_BUFFER_BIT);
-  rectMode(CENTER);
-  noStroke();
-  fill(0, 255 * 0.5 * state.transition);
-  rect(0, 0, width, height);
+  imageMode(CENTER);
+  image(homeGradientBuffer(), 0, 0, width, height);
   _renderer.GL.clear(_renderer.GL.DEPTH_BUFFER_BIT);
 
   perspective(60, width / height, 10, 5000);
   push();
-  translate(0, 0, -128);
+  translate(0, 0, 64);
   ambientLight(195);
   pointLight(
     60,
@@ -501,55 +575,25 @@ function drawPrintPreview() {
   _renderer.GL.clear(_renderer.GL.DEPTH_BUFFER_BIT);
   _renderer.GL.disable(_renderer.GL.CULL_FACE);
 
-  scene.gui.printTitle.update(
-    scene.elapsedTime,
-    uiPointer(),
-    uiPointerActive(),
-  );
-  scene.gui.printTitle.surface(
-    0,
-    titleY,
-    titleWidth,
-    titleHeight,
-    radius,
-  );
-
-  resetShader();
-  fill(255);
-  textFont(scene.font);
-  textAlign(CENTER, CENTER);
-  textSize(titleHeight / 1.5);
-  text("Card Preview", 0, titleY - titleHeight / 10);
-
   scene.gui.printCancel.armed =
     scene.ui.pointer.pressTarget == "printCancel";
-  scene.gui.printCancel.update(
-    scene.elapsedTime,
-    uiPointer(),
-    uiPointerActive(),
-  );
-  scene.gui.printCancel.button(
+  drawFlowSliceButton(
+    scene.gui.printCancel,
+    "cancel",
     cancelX,
     buttonY,
-    buttonWidth,
-    buttonHeight,
-    radius,
+    buttonWidth * 1.2,
+    buttonHeight * 1.2,
   );
 
   scene.gui.printOk.armed = scene.ui.pointer.pressTarget == "printOk";
-  scene.gui.printOk.update(
-    scene.elapsedTime,
-    uiPointer(),
-    uiPointerActive(),
-  );
-  scene.gui.printOk.button(
+  drawFlowSliceButton(
+    scene.gui.printOk,
+    "finishTeal",
     okX,
     buttonY,
-    buttonWidth,
-    buttonHeight,
-    radius,
-    1,
-    ...scene.ui.actionColors.green,
+    buttonWidth * 1.2,
+    buttonHeight * 1.2,
   );
 
   pop();

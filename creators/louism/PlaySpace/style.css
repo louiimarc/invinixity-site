@@ -13,6 +13,12 @@ body {
     -webkit-user-select: none;
 }
 
+@font-face {
+    font-family: "Humanize";
+    src: url("assets/fonts/Humanize.ttf") format("truetype");
+    font-display: swap;
+}
+
 canvas {
     position: fixed;
     inset: 0;
@@ -45,4 +51,237 @@ canvas {
     pointer-events: none;
     user-select: text;
     -webkit-user-select: text;
+}
+
+#download-handoff[hidden] {
+    display: none;
+}
+
+#download-handoff {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    padding: max(8px, env(safe-area-inset-top)) 8px
+        max(8px, env(safe-area-inset-bottom));
+    background: #9f9f9f;
+    color: #1d1d1d;
+    font-family: "Humanize", ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.handoff-card {
+    container-type: size;
+    position: relative;
+    box-sizing: border-box;
+    width: min(calc(100vw - 16px), calc((100dvh - 16px) * 9 / 16));
+    aspect-ratio: 9 / 16;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    align-items: center;
+    min-height: 0;
+    padding: 14% 5% 3%;
+    overflow: hidden;
+    background-color: #f8dce5;
+    background-image:
+        radial-gradient(circle at 10% 12%, rgba(247, 157, 31, 0.38), transparent 29%),
+        radial-gradient(circle at 92% 16%, rgba(236, 0, 140, 0.23), transparent 27%),
+        radial-gradient(circle at 78% 82%, rgba(123, 203, 187, 0.34), transparent 34%),
+        linear-gradient(145deg, #fff3dd 0%, #f5cadc 56%, #dfeef6 100%);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    box-shadow: 0 18px 60px rgba(29, 29, 29, 0.28);
+    text-align: center;
+}
+
+.handoff-title {
+    align-self: start;
+    max-width: 100%;
+    margin: 0;
+    font-family: ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+    font-size: clamp(22px, 5.6cqw, 42px);
+    font-weight: 850;
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+}
+
+.handoff-copy {
+    margin: 2.5% 0 0;
+    font-family: ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+    font-size: clamp(12px, 2.7cqw, 18px);
+    font-weight: 700;
+}
+
+.handoff-poster-wrap {
+    align-self: stretch;
+    min-height: 0;
+    display: grid;
+    place-items: center;
+    padding: 9% 0 2%;
+    perspective: 1100px;
+}
+
+.handoff-poster-rotator {
+    position: relative;
+    width: min(68%, 23.0625cqh);
+    height: auto;
+    aspect-ratio: 9 / 16;
+    transform-style: preserve-3d;
+    cursor: grab;
+    touch-action: none;
+    will-change: transform;
+}
+
+.handoff-poster-rotator.is-dragging {
+    cursor: grabbing;
+}
+
+.handoff-poster-face {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    border-radius: 2.5%;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    box-shadow: 0 10px 24px rgba(29, 29, 29, 0.14);
+}
+
+.handoff-poster-front,
+.handoff-poster {
+    width: 100%;
+    height: 100%;
+}
+
+.handoff-poster {
+    display: block;
+    object-fit: cover;
+}
+
+.handoff-poster-back {
+    transform: rotateY(180deg);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+}
+
+.handoff-poster-back-art {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.handoff-bottom {
+    position: absolute;
+    z-index: 4;
+    right: 5%;
+    bottom: 3%;
+    left: 5%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6%;
+    width: auto;
+    min-height: 15%;
+}
+
+.handoff-scan {
+    display: grid;
+    grid-template-columns: minmax(52px, 29%) minmax(0, 1fr);
+    align-items: center;
+    gap: 8%;
+    min-width: 0;
+    text-align: left;
+}
+
+.handoff-scan[hidden] {
+    display: none;
+}
+
+.handoff-qr-wrap {
+    width: 100%;
+    aspect-ratio: 1;
+    padding: 6%;
+    border-radius: 10%;
+    background: white;
+}
+
+.handoff-qr {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.handoff-detail {
+    margin: 0 0 8%;
+    font-family: ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+    font-size: clamp(11px, 3cqw, 22px);
+    font-weight: 850;
+    line-height: 1.08;
+    white-space: pre-line;
+}
+
+.handoff-url {
+    max-width: 12ch;
+    margin: 0;
+    overflow: hidden;
+    color: #6b6065;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.handoff-countdown {
+    display: inline-grid;
+    place-items: center;
+    min-width: 2.1em;
+    height: 2.1em;
+    padding: 0 0.35em;
+    border-radius: 999px;
+    background: #ec008c;
+    color: white;
+    font-family: ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+    font-size: clamp(13px, 3.2cqw, 23px);
+    font-weight: 900;
+    line-height: 1;
+}
+
+.handoff-button,
+.handoff-secondary {
+    min-width: clamp(100px, 28cqw, 190px);
+    margin: 0;
+    padding: clamp(14px, 3.2cqw, 23px) clamp(22px, 6cqw, 42px);
+    border: 0;
+    border-radius: 6px;
+    background: #7bcbbb;
+    clip-path: polygon(3% 18%, 15% 8%, 30% 13%, 45% 4%, 62% 12%, 77% 7%, 97% 18%, 93% 38%, 100% 55%, 91% 70%, 96% 88%, 77% 94%, 61% 88%, 45% 98%, 29% 90%, 8% 96%, 12% 74%, 2% 60%, 9% 42%);
+    color: #1d1d1d;
+    font: inherit;
+    font-size: clamp(17px, 4cqw, 28px);
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.handoff-button:active,
+.handoff-secondary:active {
+    transform: translateY(2px);
+}
+
+.handoff-secondary {
+    grid-column: 1 / -1;
+    justify-self: center;
+    margin-top: 4%;
+    background: #4d1430;
+    color: white;
+}
+
+@media (orientation: portrait) and (max-width: 700px) {
+    .handoff-card {
+        width: min(calc(100vw - 16px), calc((100dvh - 16px) * 9 / 16));
+    }
 }

@@ -1,6 +1,23 @@
 function keyPressed(event) {
   userStartAudio();
 
+  if (key === "π") {
+    if (!event?.repeat) toggleSecretSessionMode();
+    return false;
+  }
+
+  if (key === "ø") {
+    if (!event?.repeat) toggleSecretDemo();
+    return false;
+  }
+
+  if (scene.secretDemo.open) {
+    if (keyCode === LEFT_ARROW) seekSecretDemo(-1);
+    else if (keyCode === RIGHT_ARROW) seekSecretDemo(1);
+    else if (keyCode === ESCAPE) closeSecretDemo();
+    return false;
+  }
+
   if (key === "?") {
     if (!event?.repeat) {
       scene.debug.guides = !scene.debug.guides;
@@ -9,11 +26,20 @@ function keyPressed(event) {
   }
 
   if (sessionCameraPromptOpen()) {
-    if (
-      keyCode === ESCAPE &&
-      !scene.session.cameraPrompt.confirming
-    ) {
-      cancelSessionCameraPrompt();
+    if (keyCode === ESCAPE && !scene.session.cameraPrompt.confirming) {
+      if (scene.session.cameraPrompt.exitConfirming) {
+        closeSessionCameraExitConfirmation();
+      } else {
+        openSessionCameraExitConfirmation();
+      }
+    }
+    return false;
+  }
+
+  if (scene.ui.backgroundPicker.open) {
+    if (keyCode === ESCAPE) {
+      closeBackgroundFramePicker();
+      setTextEdit(true);
     }
     return false;
   }
@@ -66,12 +92,33 @@ function moveVertical(dir) {
 function uiButtonAtPointer() {
   if (sessionCameraPromptOpen()) {
     if (
+      scene.session.cameraPrompt.exitConfirming ||
+      scene.session.cameraPrompt.exitTransition > 0.05
+    ) {
+      if (
+        scene.session.cameraPrompt.exitConfirming &&
+        scene.session.cameraPrompt.exitTransition > 0.9 &&
+        scene.gui.cameraExitCancel.hitTest()
+      ) {
+        return "cameraExitCancel";
+      }
+      if (
+        scene.session.cameraPrompt.exitConfirming &&
+        scene.session.cameraPrompt.exitTransition > 0.9 &&
+        scene.gui.cameraExitYes.hitTest()
+      ) {
+        return "cameraExitYes";
+      }
+      return "cameraExitPrompt";
+    }
+    if (
       scene.session.cameraPrompt.closing ||
       scene.session.cameraPrompt.confirming
     ) {
       return "cameraPrompt";
     }
     if (scene.session.cameraPrompt.transition < 0.9) return "cameraPrompt";
+    if (scene.gui.cameraExit.hitTest()) return "cameraExit";
     if (scene.gui.cameraTake.hitTest()) return "cameraTake";
     if (
       scene.session.camera.status == "captured" &&
@@ -80,8 +127,11 @@ function uiButtonAtPointer() {
     ) {
       return "cameraNext";
     }
-    if (scene.gui.cameraCancel.hitTest()) return "cameraCancel";
     return "cameraPrompt";
+  }
+
+  if (scene.ui.backgroundPicker.open) {
+    return backgroundFramePickerTargetAtPointer();
   }
 
   if (scene.ui.printPreview.open) {
@@ -89,6 +139,59 @@ function uiButtonAtPointer() {
     if (scene.gui.printCancel.hitTest()) return "printCancel";
     if (scene.gui.printOk.hitTest()) return "printOk";
     return "printPreview";
+  }
+
+  if (scene.session.mode == "frame") {
+    if (
+      scene.session.cameraPrompt.exitConfirming ||
+      scene.session.cameraPrompt.exitTransition > 0.05
+    ) {
+      if (
+        scene.session.cameraPrompt.exitConfirming &&
+        scene.session.cameraPrompt.exitTransition > 0.9 &&
+        scene.gui.cameraExitCancel.hitTest()
+      ) {
+        return "cameraExitCancel";
+      }
+      if (
+        scene.session.cameraPrompt.exitConfirming &&
+        scene.session.cameraPrompt.exitTransition > 0.9 &&
+        scene.gui.cameraExitYes.hitTest()
+      ) {
+        return "cameraExitYes";
+      }
+      return "frameExitPrompt";
+    }
+    if (scene.gui.frameExit.hitTest()) return "frameExit";
+  }
+
+  if (scene.session.mode == "active") {
+    if (
+      scene.session.cameraPrompt.exitConfirming ||
+      scene.session.cameraPrompt.exitTransition > 0.05
+    ) {
+      if (
+        scene.session.cameraPrompt.exitConfirming &&
+        scene.session.cameraPrompt.exitTransition > 0.9 &&
+        scene.gui.cameraExitCancel.hitTest()
+      ) {
+        return "cameraExitCancel";
+      }
+      if (
+        scene.session.cameraPrompt.exitConfirming &&
+        scene.session.cameraPrompt.exitTransition > 0.9 &&
+        scene.gui.cameraExitYes.hitTest()
+      ) {
+        return "cameraExitYes";
+      }
+      return "editorExitPrompt";
+    }
+    if (scene.gui.frameExit.hitTest()) return "frameExit";
+    if (scene.text.edit) {
+      if (scene.gui.editorUndo.hitTest()) return "editorUndo";
+      if (scene.gui.editorRedo.hitTest()) return "editorRedo";
+      if (scene.gui.editorDelete.hitTest()) return "editorDelete";
+    }
   }
 
   if (scene.session.mode == "frame" && scene.session.photoFrame.closed) {
@@ -144,11 +247,29 @@ function beginUiButtonPress() {
   if (sessionCameraPromptOpen()) {
     scene.ui.pointer.pressTarget = uiButtonAtPointer();
     if (
-      ["cameraTake", "cameraNext", "cameraCancel"].includes(
+      [
+        "cameraTake",
+        "cameraNext",
+        "cameraExit",
+        "cameraExitCancel",
+        "cameraExitYes",
+      ].includes(
         scene.ui.pointer.pressTarget,
       )
     ) {
       scene.ui.pointer.pressStartedOnButton = true;
+    }
+    return true;
+  }
+
+  if (scene.ui.backgroundPicker.open) {
+    scene.ui.pointer.pressTarget = backgroundFramePickerTargetAtPointer();
+    scene.ui.pointer.pressStartedOnButton = [
+      "backgroundCancel",
+      "backgroundNext",
+    ].includes(scene.ui.pointer.pressTarget);
+    if (!scene.ui.pointer.pressStartedOnButton) {
+      beginBackgroundFramePickerGesture();
     }
     return true;
   }
@@ -191,6 +312,14 @@ function beginUiButtonPress() {
 }
 
 function updateUiButtonPress() {
+  if (
+    scene.ui.backgroundPicker.open &&
+    scene.ui.backgroundPicker.drag.active
+  ) {
+    updateBackgroundFramePickerGesture();
+    return true;
+  }
+
   if (
     sessionCameraPromptOpen() &&
     scene.ui.pointer.pressStartedOnButton
@@ -248,6 +377,17 @@ function updateUiButtonPress() {
 }
 
 function endUiButtonPress() {
+  if (
+    scene.ui.backgroundPicker.open &&
+    scene.ui.backgroundPicker.drag.active
+  ) {
+    let releaseTarget = backgroundFramePickerTargetAtPointer();
+    endBackgroundFramePickerGesture(releaseTarget);
+    scene.ui.pointer.pressTarget = null;
+    scene.ui.pointer.pressStartedOnButton = false;
+    return true;
+  }
+
   if (scene.ui.printPreview.open && scene.ui.printPreview.drag.active) {
     endPrintPreviewDrag();
     return true;
@@ -258,7 +398,6 @@ function endUiButtonPress() {
   let startedOnButton = scene.ui.pointer.pressStartedOnButton;
   let cursorDragActive = scene.ui.textField.cursorDrag.active;
   scene.ui.textField.cursorDrag.active = false;
-  scene.ui.slider.active = null;
   inout.audio.ui?.endControl(pressTarget);
   scene.ui.pointer.pressTarget = null;
   scene.ui.pointer.pressStartedOnButton = false;
@@ -285,7 +424,13 @@ function endUiButtonPress() {
   if (
     [
       "sessionStart",
-      "cameraCancel",
+      "cameraExit",
+      "cameraExitCancel",
+      "cameraExitYes",
+      "frameExit",
+      "editorUndo",
+      "editorRedo",
+      "editorDelete",
       "cameraNext",
       "frameNext",
       "frameRedraw",
@@ -295,6 +440,8 @@ function endUiButtonPress() {
       "edit",
       "done",
       "sideSwitch",
+      "backgroundCancel",
+      "backgroundNext",
     ].includes(
       releaseTarget,
     )
@@ -303,7 +450,7 @@ function endUiButtonPress() {
   }
 
   if (releaseTarget == "sessionStart") {
-    openSessionCameraPrompt();
+    if (!beginSecretSession()) openSessionCameraPrompt();
   } else if (releaseTarget == "cameraTake") {
     if (scene.session.camera.status == "captured") {
       retakeSessionPhoto();
@@ -312,24 +459,45 @@ function endUiButtonPress() {
     }
   } else if (releaseTarget == "cameraNext") {
     acceptSessionPhoto();
-  } else if (releaseTarget == "cameraCancel") {
-    cancelSessionCameraPrompt();
+  } else if (releaseTarget == "cameraExit") {
+    openSessionCameraExitConfirmation();
+  } else if (releaseTarget == "cameraExitCancel") {
+    closeSessionCameraExitConfirmation();
+  } else if (releaseTarget == "cameraExitYes") {
+    confirmSessionCameraExit();
+  } else if (releaseTarget == "frameExit") {
+    openSessionCameraExitConfirmation();
+  } else if (releaseTarget == "editorUndo") {
+    undoEditorChange();
+  } else if (releaseTarget == "editorRedo") {
+    redoEditorChange();
+  } else if (releaseTarget == "editorDelete") {
+    clearAllTextPaths();
   } else if (releaseTarget == "frameNext") {
     acceptSessionPhotoFrame();
   } else if (releaseTarget == "frameRedraw") {
     redrawSessionPhotoFrame();
   } else if (releaseTarget == "print") {
-    requestPrintPreview();
+    openBackgroundFramePicker();
   } else if (releaseTarget == "printCancel") {
     closePrintPreview(false);
   } else if (releaseTarget == "printOk") {
+    let saveAsExample = scene.secretSession.recording;
+    captureCurrentCreationRecipe();
+    scene.ui.printPreview.saveAsExample = saveAsExample;
     closePrintPreview(true);
   } else if (releaseTarget == "edit") {
     setTextEdit(true);
   } else if (releaseTarget == "done") {
     setTextEdit(false);
+    openBackgroundFramePicker();
   } else if (releaseTarget == "sideSwitch") {
     toggleControlSide();
+  } else if (releaseTarget == "backgroundCancel") {
+    closeBackgroundFramePicker();
+    setTextEdit(true);
+  } else if (releaseTarget == "backgroundNext") {
+    confirmBackgroundFramePicker();
   }
 
   return true;
@@ -337,12 +505,12 @@ function endUiButtonPress() {
 
 function beginTextPathGesture() {
   if (!scene.text.edit) return;
-  let start = constrainPointToComposition(mouseX, mouseY, true);
+  let start = constrainPointToCreationCard(mouseX, mouseY, true);
   scene.text.pathGesture.active = true;
   scene.text.pathGesture.drawing = false;
   scene.text.pathGesture.drawable =
     scene.text.activeWord >= 0 &&
-    pointInsideComposition(mouseX, mouseY, true) &&
+    pointInsideCreationCard(mouseX, mouseY, true) &&
     (scene.text.pathEditArmed ||
       textPathForWordIndex(scene.text.activeWord) == null);
   scene.text.pathGesture.moved = false;
@@ -354,7 +522,7 @@ function beginTextPathGesture() {
 function updateTextPathGesture() {
   let gesture = scene.text.pathGesture;
   if (!scene.text.edit || !gesture.active) return false;
-  let pointer = constrainPointToComposition(mouseX, mouseY, true);
+  let pointer = constrainPointToCreationCard(mouseX, mouseY, true);
 
   if (!gesture.drawing) {
     let movement = dist(gesture.start.x, gesture.start.y, mouseX, mouseY);
@@ -399,6 +567,7 @@ function endTextPathGesture() {
 
   if (completedPath) {
     saveTextMemory();
+    recordEditorHistory();
   }
   if (selectCanvasItem) {
     selectLayerItemAtCanvasPointer();
@@ -418,6 +587,10 @@ function mousePressed() {
     return false;
   }
 
+  if (beginHomeGalleryGesture()) {
+    return false;
+  }
+
   beginTextPathGesture();
 }
 
@@ -432,6 +605,10 @@ function mouseReleased() {
     return false;
   }
 
+  if (endHomeGalleryGesture()) {
+    return false;
+  }
+
   endTextPathGesture();
 }
 
@@ -442,6 +619,10 @@ function mouseDragged() {
     return false;
   }
   if (updateUiButtonPress()) {
+    return false;
+  }
+
+  if (updateHomeGalleryGesture()) {
     return false;
   }
 
@@ -464,6 +645,10 @@ function touchStarted() {
     return false;
   }
 
+  if (beginHomeGalleryGesture()) {
+    return false;
+  }
+
   beginTextPathGesture();
 
   return false;
@@ -479,6 +664,10 @@ function touchMoved() {
     return false;
   }
 
+  if (updateHomeGalleryGesture()) {
+    return false;
+  }
+
   updateTextPathGesture();
 
   return false;
@@ -490,7 +679,12 @@ function touchEnded() {
   if (endPhotoFrameGesture()) {
     return false;
   }
-  endUiButtonPress();
+  if (endUiButtonPress()) {
+    return false;
+  }
+  if (endHomeGalleryGesture()) {
+    return false;
+  }
   endTextPathGesture();
   return false;
 }

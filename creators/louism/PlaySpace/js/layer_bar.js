@@ -76,8 +76,8 @@ function layerPointSegmentDistance(px, py, a, b) {
 function layerWordHit(wordIndex, x, y) {
   let path = textPathForWordIndex(wordIndex);
   if (path == null || path.length < 2) return false;
-  let composition = compositionBounds();
-  let baseTextSize = min(composition.width, composition.height) / 4;
+  let creationCard = creationCardBounds();
+  let baseTextSize = min(creationCard.width, creationCard.height) / 4;
   let hitRadius = max(
     24 * scene.ui.scale,
     textSizeForWordIndex(wordIndex, baseTextSize) * 0.32,
@@ -171,16 +171,17 @@ function selectLayerItemAtCanvasPointer() {
 function layerBarLayout() {
   let order = [...syncLayerOrder()].reverse();
   let scale = scene.ui.scale;
+  let compactFactor = height < 800 * scale ? 0.64 : 1;
   let optionsLayout = texturePadLayout();
-  let lineHeight = 24 * scale;
-  let lineGap = 40 * scale;
-  let headerHeight = 64 * scale;
-  let panelPadding = 18 * scale;
+  let lineHeight = 44 * scale * compactFactor;
+  let lineGap = 54 * scale * compactFactor;
+  let headerHeight = 64 * scale * compactFactor;
+  let panelPadding = 18 * scale * compactFactor;
   let availableLineWidth = max(
     44 * scale,
     optionsLayout.panelWidth - panelPadding * 2,
   );
-  let normalWidth = max(44 * scale, availableLineWidth * 0.35);
+  let normalWidth = availableLineWidth;
   let selectedWidth = availableLineWidth;
   let contentHeight = max(
     lineHeight,
@@ -196,7 +197,7 @@ function layerBarLayout() {
   let panelGap = 8 * scale;
   let desiredPanelY =
     optionsTop - panelGap - currentPanelHeight / 2;
-  let topLimit = -height / 2 + 4 * scale;
+  let topLimit = -height / 2 + 138 * scale;
   let panelY = max(
     desiredPanelY,
     topLimit + currentPanelHeight / 2,
@@ -206,6 +207,7 @@ function layerBarLayout() {
     headerHeight + panelPadding + lineHeight / 2;
   return {
     optionsLayout,
+    compactFactor,
     sideMix: controlSideMix(),
     panelPadding,
     targetPanelWidth,
@@ -231,21 +233,26 @@ function layerBarTargetAtPointer() {
   ) {
     return null;
   }
-  let selectedBounds = state.bounds[state.selectedKey];
-  if (
-    selectedBounds != null &&
-    pointerInsideBounds(selectedBounds)
-  ) {
-    return "layerBar";
+  for (let [key, bounds] of Object.entries(state.bounds)) {
+    if (pointerInsideBounds(bounds)) return `layerItem:${key}`;
   }
   return pointerInsideBounds(state.panelBounds) ? "layerPanel" : null;
 }
 
 function beginLayerBarInteraction(target) {
   if (target == "layerPanel") return true;
-  if (target != "layerBar") return false;
+  if (!target?.startsWith("layerItem:")) return false;
   let state = scene.ui.layerBar;
-  let bounds = state.bounds?.[state.selectedKey];
+  let key = target.substring("layerItem:".length);
+  let item = layerItemForKey(key);
+  if (item == null) return false;
+  state.selectedKey = key;
+  if (item.type == "word") {
+    selectCanvasWordForPathEditing(item.wordIndex);
+  } else {
+    clearCanvasTextSelection();
+  }
+  let bounds = state.bounds?.[key];
   if (bounds == null) return false;
   state.dragging = true;
   state.dragY = bounds.y;
@@ -255,7 +262,7 @@ function beginLayerBarInteraction(target) {
 
 function updateLayerBarInteraction(target) {
   let state = scene.ui.layerBar;
-  if (target != "layerBar" || !state.dragging) return false;
+  if (!target?.startsWith("layerItem:") || !state.dragging) return false;
   let layout = layerBarLayout();
   let pointerY = mouseY - height / 2 - state.dragOffsetY;
   state.dragY = constrain(pointerY, layout.top, layout.top + layout.height);
@@ -281,9 +288,10 @@ function updateLayerBarInteraction(target) {
 
 function endLayerBarInteraction(target) {
   if (target == "layerPanel") return true;
-  if (target != "layerBar") return false;
+  if (!target?.startsWith("layerItem:")) return false;
   scene.ui.layerBar.dragging = false;
   saveTextMemory();
+  recordEditorHistory();
   return true;
 }
 
@@ -365,11 +373,11 @@ function drawLayerBar() {
   translate(0, 0, 48);
   noStroke();
   fill(255, 255 * state.position);
-  textFont(scene.font);
+  textFont(scene.text.font || scene.font);
   textAlign(layout.sideMix < 0.5 ? LEFT : RIGHT, CENTER);
-  textSize(44 * scene.ui.scale);
+  textSize(34 * scene.ui.scale * layout.compactFactor);
   text(
-    "Layer",
+    "Layers",
     lerp(
       panelX - state.panelWidth / 2 + layout.panelPadding,
       panelX + state.panelWidth / 2 - layout.panelPadding,
@@ -393,15 +401,6 @@ function drawLayerBar() {
       : animateData(currentY, targetY, 0.4);
     state.widths[key] = currentWidth;
     state.positions[key] = currentY;
-    let layerRgb = item?.type == "word"
-      ? textureMixRgbValues(textureMixForWordIndex(item.wordIndex))
-      : [0.2, 0.2, 0.2];
-    fill(
-      layerRgb[0] * 255,
-      layerRgb[1] * 255,
-      layerRgb[2] * 255,
-      selected ? 245 : 185,
-    );
     let leftLineX =
       panelX - state.panelWidth / 2 +
       layout.panelPadding + currentWidth / 2;
@@ -409,12 +408,55 @@ function drawLayerBar() {
       panelX + state.panelWidth / 2 -
       layout.panelPadding - currentWidth / 2;
     let lineX = lerp(leftLineX, rightLineX, layout.sideMix);
-    rect(
-      lineX,
-      currentY,
-      currentWidth,
-      layout.lineHeight,
-      layout.lineHeight / 2,
+    let rowAssetKey = item?.type == "photo"
+      ? "layerLocked"
+      : selected
+        ? "layerActive"
+        : "layerIdle";
+    let rowAsset = scene.flowUi.slices[rowAssetKey];
+    if (rowAsset?.width > 1) {
+      imageMode(CENTER);
+      image(
+        rowAsset,
+        lineX,
+        currentY,
+        currentWidth,
+        layout.lineHeight,
+      );
+    }
+    push();
+    translate(0, 0, 1);
+    let rowLabel = item?.type == "photo"
+      ? "Photo"
+      : textWords()[item.wordIndex] || `Text ${item.wordIndex + 1}`;
+    let labelColor = item?.type == "photo"
+      ? 190
+      : selected
+        ? 29
+        : 255;
+    fill(labelColor, 255 * state.position);
+    textFont(scene.font);
+    textAlign(LEFT, CENTER);
+    textSize(layout.lineHeight * 0.48);
+    let rowLeft = lineX - currentWidth / 2;
+    let handleX = rowLeft + layout.lineHeight * 0.48;
+    let handleWidth = layout.lineHeight * 0.28;
+    stroke(labelColor, 255 * state.position);
+    strokeWeight(max(1, 2 * scene.ui.scale));
+    for (let handleIndex = -1; handleIndex <= 1; handleIndex++) {
+      let handleY = currentY + handleIndex * 5 * scene.ui.scale;
+      line(
+        handleX - handleWidth / 2,
+        handleY,
+        handleX + handleWidth / 2,
+        handleY,
+      );
+    }
+    noStroke();
+    text(
+      rowLabel,
+      rowLeft + layout.lineHeight * 0.88,
+      currentY - layout.lineHeight * 0.04,
     );
     state.bounds[key] = {
       x: lineX,
@@ -422,6 +464,7 @@ function drawLayerBar() {
       w: max(currentWidth, 44 * scene.ui.scale),
       h: max(layout.lineGap, 32 * scene.ui.scale),
     };
+    pop();
   }
   pop();
 }

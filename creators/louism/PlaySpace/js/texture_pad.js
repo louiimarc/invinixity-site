@@ -5,15 +5,10 @@ function texturePadLayout() {
   let panelPadding = 18 * scale;
   let bottomPadding = panelPadding;
   let headerHeight = 72 * scale;
-  let sliderHeight = 48 * scale;
-  let sliderGap = 10 * scale;
-  let sliderSectionGap = 18 * scale;
-  let sliderRegionHeight =
-    sliderSectionGap + sliderHeight * 3 + sliderGap * 2;
   let compact = width < 700 * scale;
   let maximumPadWidth = width - padding * 2 - panelPadding * 2;
   let maximumPadHeight =
-    height - padding * 2 - headerHeight - bottomPadding - sliderRegionHeight;
+    height - padding * 2 - headerHeight - bottomPadding;
   let availablePadSize = max(
     64 * scale,
     min(maximumPadWidth, maximumPadHeight),
@@ -23,15 +18,9 @@ function texturePadLayout() {
     max(128 * scale, width * 0.3),
     availablePadSize,
   );
-  let maximumResize = constrain(
-    min(maximumPadWidth, maximumPadHeight) / max(1, basePadSize),
-    1,
-    1.25,
-  );
   let middleReveal = constrain(state.progress, 0, 1);
-  let sliderReveal = constrain(state.progress - 1, 0, 1);
-  state.resize = lerp(1, maximumResize, sliderReveal);
-  let padSize = basePadSize * state.resize;
+  state.resize = 1;
+  let padSize = basePadSize;
   if (state.titleWidthScale != scale) {
     push();
     textFont(scene.font);
@@ -49,8 +38,7 @@ function texturePadLayout() {
   );
   let panelHeight =
     headerHeight +
-    (padSize + bottomPadding) * middleReveal +
-    sliderRegionHeight * sliderReveal;
+    (padSize + bottomPadding) * middleReveal;
   let rightVisibleX = width / 2 - padding - panelWidth / 2;
   let leftVisibleX = -width / 2 + padding + panelWidth / 2;
   let rightHiddenX = width / 2 + padding + panelWidth / 2;
@@ -59,17 +47,14 @@ function texturePadLayout() {
   let visibleX = lerp(leftVisibleX, rightVisibleX, sideMix);
   let hiddenX = lerp(leftHiddenX, rightHiddenX, sideMix);
   let panelX = lerp(hiddenX, visibleX, state.position);
-  let visibleY = 0;
+  let visibleY = height < 800 * scale ? 70 * scale : 0;
   let panelTop = visibleY - panelHeight / 2;
   let panelBottom = visibleY + panelHeight / 2;
   let panelLeft = panelX - panelWidth / 2;
   let panelRight = panelX + panelWidth / 2;
   let padY = panelTop + headerHeight + padSize / 2;
-  let sliderTop =
-    padY + padSize / 2 + sliderSectionGap + sliderHeight / 2;
   let panelRadius = scene.ui.button.radius * scale;
   let padRadius = max(6 * scale, panelRadius - panelPadding);
-  let safeSliderWidth = max(1, panelWidth - panelRadius * 2);
   let handleReach = panelRadius + 18 * scale;
   return {
     x: panelX,
@@ -94,17 +79,8 @@ function texturePadLayout() {
       w: handleReach * 1.6,
       h: handleReach * 1.6,
     },
-    sliders: {
-      top: sliderTop,
-      safeWidth: safeSliderWidth,
-      fullWidth: padSize,
-      height: sliderHeight,
-      gap: sliderGap,
-      reveal: sliderReveal,
-    },
     middleReveal,
     basePadSize,
-    maximumResize,
     compact,
   };
 }
@@ -125,7 +101,7 @@ function updateOptionsWorkspaceLayout() {
 
   if (scene.session.mode == "active" && scene.text.edit) {
     let sideMix = controlSideMix();
-    let from = compositionBounds(
+    let from = creationCardBounds(
       width,
       height,
       scene.ui.controlSide,
@@ -133,7 +109,7 @@ function updateOptionsWorkspaceLayout() {
       sideMix,
       previousWidth,
     );
-    let to = compositionBounds(
+    let to = creationCardBounds(
       width,
       height,
       scene.ui.controlSide,
@@ -153,14 +129,6 @@ function texturePadTargetAtPointer() {
   }
   if (pointerInsideBounds(bounds.resize)) return "texturePadResize";
   if (pointerInsideBounds(bounds.title)) return "texturePanelCycle";
-  for (let channel of ["red", "green", "blue"]) {
-    if (
-      bounds.rgbVisible &&
-      pointerInsideBounds(scene.gui[channel].bounds)
-    ) {
-      return channel;
-    }
-  }
   if (
     bounds.padVisible &&
     scene.text.activeWord >= 0 &&
@@ -203,13 +171,6 @@ function beginTexturePadInteraction(target) {
     return true;
   }
   if (target == "texturePanelCycle") return true;
-  if (["red", "green", "blue"].includes(target)) {
-    scene.ui.slider.active = target;
-    let value = horizontalSliderValueFromPointer(scene.gui[target].bounds);
-    setTextRgbValue(target, value);
-    inout.audio.ui?.slide(target, value, mouseX / width);
-    return true;
-  }
   if (target == "texturePanel") return true;
   if (target != "texturePad") return false;
   scene.ui.texturePad.active = true;
@@ -231,23 +192,16 @@ function updateTexturePadInteraction(target) {
     state.progress = constrain(
       state.resizeStartProgress + movement / (layout.basePadSize * 0.4),
       0,
-      2,
+      1,
     );
     inout.audio.ui?.slide(
       "texturePadResize",
-      state.progress / 2,
+      state.progress,
       mouseX / width,
     );
     return true;
   }
   if (target == "texturePanelCycle") return true;
-  if (["red", "green", "blue"].includes(scene.ui.slider.active)) {
-    let channel = scene.ui.slider.active;
-    let value = horizontalSliderValueFromPointer(scene.gui[channel].bounds);
-    setTextRgbValue(channel, value);
-    inout.audio.ui?.slide(channel, value, mouseX / width);
-    return true;
-  }
   if (target != "texturePad" || !scene.ui.texturePad.active) return false;
   updateTexturePadFromPointer();
   return true;
@@ -259,7 +213,7 @@ function endTexturePadInteraction(target) {
     let previousDetent = state.detent;
     state.detent = state.resizeMoved
       ? round(state.progress)
-      : (state.detent + 1) % 3;
+      : (state.detent + 1) % 2;
     state.resizing = false;
     inout.audio.ui?.panelSnap(
       previousDetent,
@@ -275,7 +229,7 @@ function endTexturePadInteraction(target) {
       pointerInsideBounds(state.bounds.title)
     ) {
       let previousDetent = state.detent;
-      state.detent = (state.detent + 1) % 3;
+      state.detent = (state.detent + 1) % 2;
       inout.audio.ui?.panelSnap(
         previousDetent,
         state.detent,
@@ -284,12 +238,12 @@ function endTexturePadInteraction(target) {
     }
     return true;
   }
-  if (["red", "green", "blue"].includes(target)) return true;
   if (target == "texturePanel") return true;
   if (target != "texturePad") return false;
   scene.ui.texturePad.active = false;
   scene.ui.texturePad.previewMix = null;
   saveTextMemory();
+  recordEditorHistory();
   return true;
 }
 
@@ -377,86 +331,6 @@ function drawTexturePadPanelDetails(layout, opacity) {
   pop();
 }
 
-function drawTexturePadSliders(layout, color) {
-  if (layout.sliders.reveal <= 0.001) {
-    for (let channel of ["red", "green", "blue"]) {
-      scene.gui[channel].bounds = null;
-    }
-    return;
-  }
-
-  let rgb = hsvToRgbValues(color);
-  let sliders = [
-    {
-      channel: "red",
-      value: rgb[0],
-      start: [0, rgb[1], rgb[2]],
-      end: [1, rgb[1], rgb[2]],
-    },
-    {
-      channel: "green",
-      value: rgb[1],
-      start: [rgb[0], 0, rgb[2]],
-      end: [rgb[0], 1, rgb[2]],
-    },
-    {
-      channel: "blue",
-      value: rgb[2],
-      start: [rgb[0], rgb[1], 0],
-      end: [rgb[0], rgb[1], 1],
-    },
-  ];
-  let clipState = beginColorPanelClip({
-    x: layout.x,
-    y: layout.y,
-    w: layout.panelWidth,
-    h: layout.panelHeight,
-  });
-
-  for (let i = 0; i < sliders.length; i++) {
-    let slider = sliders[i];
-    let sliderY = layout.sliders.top +
-      i * (layout.sliders.height + layout.sliders.gap);
-    let panelBottom = layout.y + layout.panelHeight / 2;
-    let sliderTopEdge = sliderY - layout.sliders.height / 2;
-    let individualReveal = constrain(
-      (panelBottom - sliderTopEdge) / layout.sliders.height,
-      0,
-      1,
-    );
-    let sliderExtension = constrain(
-      (individualReveal - 0.75) / 0.25,
-      0,
-      1,
-    );
-    sliderExtension = sliderExtension * sliderExtension *
-      (3 - 2 * sliderExtension);
-    let sliderWidth = lerp(
-      layout.sliders.safeWidth,
-      layout.sliders.fullWidth,
-      sliderExtension,
-    );
-    let gui = scene.gui[slider.channel];
-    gui.armed = scene.ui.pointer.pressTarget == slider.channel;
-    gui.update(scene.elapsedTime, uiPointer(), uiPointerActive());
-    push();
-    translate(0, 0, 64);
-    gui.gradientSlider(
-      layout.x,
-      sliderY,
-      sliderWidth,
-      layout.sliders.height,
-      layout.sliders.height / 2,
-      slider.value,
-      slider.start,
-      slider.end,
-    );
-    pop();
-    if (individualReveal < 0.99) gui.bounds = null;
-  }
-  endColorPanelClip(clipState);
-}
-
 function drawTexturePad() {
   let visible =
     scene.session.mode == "active" && scene.text.edit && data.loading.ready;
@@ -491,7 +365,6 @@ function drawTexturePad() {
     },
     resize: layout.handle,
     padVisible: layout.middleReveal >= 0.99,
-    rgbVisible: layout.sliders.reveal >= 0.99,
   };
   let opacity = constrain(state.position, 0, 1);
   scene.gui.texturePanel.update(
@@ -521,5 +394,4 @@ function drawTexturePad() {
     opacity * layout.middleReveal,
   );
   endColorPanelClip(contentClip);
-  drawTexturePadSliders(layout, scene.ui.colorPanel.color);
 }

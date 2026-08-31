@@ -2,6 +2,19 @@ function sessionCameraPromptOpen() {
   return scene.session.cameraPrompt.open;
 }
 
+function chooseSessionCameraCaptureLabel() {
+  let camera = scene.session.camera;
+  let labels = camera.captureLabels.filter((label) => label != "");
+  if (labels.length == 0) labels = ["Make Your Cover Shot!"];
+  let candidates = labels.filter(
+    (label) => label != camera.previousCaptureLabel,
+  );
+  if (candidates.length == 0) candidates = labels;
+  camera.captureLabel = candidates[floor(random(candidates.length))];
+  camera.previousCaptureLabel = camera.captureLabel;
+  return camera.captureLabel;
+}
+
 function openSessionCameraPrompt() {
   if (!data.loading.ready || sessionCameraPromptOpen()) return;
 
@@ -17,9 +30,12 @@ function openSessionCameraPrompt() {
   prompt.open = true;
   prompt.closing = false;
   prompt.confirming = false;
+  prompt.exitConfirming = false;
+  prompt.exitTransition = 0;
   prompt.transition = 0;
   prompt.transitionTarget = 1;
   prompt.nextMode = "idle";
+  chooseSessionCameraCaptureLabel();
   cancelSessionPhotoCountdown();
   startSessionCamera();
 }
@@ -27,6 +43,8 @@ function openSessionCameraPrompt() {
 function closeSessionCameraPrompt(nextMode = "idle") {
   let prompt = scene.session.cameraPrompt;
   prompt.confirming = false;
+  prompt.exitConfirming = false;
+  prompt.exitTransition = 0;
   prompt.transitionTarget = 0;
   prompt.closing = true;
   prompt.nextMode = nextMode;
@@ -34,6 +52,30 @@ function closeSessionCameraPrompt(nextMode = "idle") {
   stopSessionCamera();
   scene.ui.pointer.pressTarget = null;
   scene.ui.pointer.pressStartedOnButton = false;
+}
+
+function openSessionCameraExitConfirmation() {
+  let prompt = scene.session.cameraPrompt;
+  if (prompt.closing || prompt.confirming || prompt.exitConfirming) return;
+  cancelSessionPhotoCountdown();
+  prompt.exitConfirming = true;
+  scene.ui.pointer.pressTarget = null;
+  scene.ui.pointer.pressStartedOnButton = false;
+}
+
+function closeSessionCameraExitConfirmation() {
+  scene.session.cameraPrompt.exitConfirming = false;
+  scene.ui.pointer.pressTarget = null;
+  scene.ui.pointer.pressStartedOnButton = false;
+}
+
+function confirmSessionCameraExit() {
+  scene.session.cameraPrompt.exitConfirming = false;
+  if (["frame", "active"].includes(scene.session.mode)) {
+    finishPlaySession();
+    return;
+  }
+  cancelSessionCameraPrompt();
 }
 
 function cancelSessionCameraPrompt() {
@@ -182,48 +224,43 @@ function stopSessionCamera(cancelRequest = true) {
 
 function sessionCameraLayout() {
   let scale = scene.ui.scale;
-  let reviewing = scene.session.photo != null;
-  let controlRows = reviewing ? 3 : 2;
   let padding = scene.ui.button.padding * scale;
   let controlHeight = scene.ui.button.height * scale;
   let controlRadius = scene.ui.button.radius * scale;
-  let controlGap = 12 * scale;
-  let titleWidth = min(width - padding * 2, 420 * scale);
-  let previewWidth = min(width - padding * 2, 640 * scale);
-  let availablePreviewHeight = max(
-    120 * scale,
-    height -
-      padding * 4 -
-      controlHeight * (controlRows + 1) -
-      controlGap * controlRows,
-  );
-  let previewHeight = min(previewWidth * 0.75, availablePreviewHeight);
-  let buttonWidth = min(width - padding * 2, 260 * scale);
-  let cancelY = height / 2 - padding - controlHeight / 2;
-  let retakeY = cancelY - controlHeight - controlGap;
-  let nextY = retakeY - controlHeight - controlGap;
-  let takeY = retakeY;
-  let titleY = -height / 2 + padding + controlHeight / 2;
-  let previewTop = titleY + controlHeight / 2 + padding;
-  let previewBottom =
-    (reviewing ? nextY : takeY) - controlHeight / 2 - padding;
+  let logoWidth = min(width * 0.3, 190 * scale);
+  let logoAsset = scene.homeGallery.assets.logo;
+  let logoHeight = logoAsset?.width > 1
+    ? logoWidth * logoAsset.height / logoAsset.width
+    : logoWidth * 0.65;
+  let previewHeight = min(height * 0.42, (width - padding * 2) * 0.75);
+  let previewWidth = previewHeight / 0.75;
+  let buttonWidth = min(260 * scale, previewWidth * 0.44);
+  let actionX = previewWidth * 0.27;
+  let exitWidth = min(width * 0.22, 120 * scale);
+  let exitHeight = exitWidth * 171 / 242;
 
   return {
     padding,
-    controlGap,
     controlHeight,
     controlRadius,
-    titleWidth,
-    titleY,
+    titleWidth: min(width - padding * 2, 560 * scale),
+    titleY: -height * 0.245,
+    logoWidth,
+    logoHeight,
+    logoY: -height * 0.36,
+    exitX: -width / 2 + padding + exitWidth / 2,
+    exitY: -height / 2 + padding + exitHeight / 2,
+    exitWidth,
+    exitHeight,
     previewWidth,
     previewHeight,
-    previewY: (previewTop + previewBottom) / 2,
+    previewY: height * 0.02,
     previewRadius: 28 * scale,
     buttonWidth,
-    takeY,
-    retakeY,
-    nextY,
-    cancelY,
+    actionX,
+    takeY: height * 0.31,
+    retakeY: height * 0.31,
+    nextY: height * 0.31,
   };
 }
 
@@ -371,6 +408,14 @@ function beginSessionPhotoCountdown() {
   countdown.value = 3;
   countdown.startedAt = millis();
   countdown.lastStep = -1;
+  let previousAngle = countdown.patternBaseAngle;
+  let nextAngle = random(360);
+  let angleDistance = abs(((nextAngle - previousAngle + 540) % 360) - 180);
+  while (angleDistance < 90) {
+    nextAngle = random(360);
+    angleDistance = abs(((nextAngle - previousAngle + 540) % 360) - 180);
+  }
+  countdown.patternBaseAngle = nextAngle;
   updateSessionPhotoCountdown();
 }
 
@@ -396,6 +441,10 @@ function updateSessionPhotoCountdown() {
   countdown.value = 3 - step;
   if (step != countdown.lastStep) {
     countdown.lastStep = step;
+    let angleOffsets = [0, 120, -120];
+    countdown.patternAngle = countdown.patternBaseAngle + angleOffsets[step];
+    countdown.patternPhaseX = random();
+    countdown.patternPhaseY = random();
     inout.audio.ui?.countdown(
       step,
       countdown.scale,
@@ -405,6 +454,7 @@ function updateSessionPhotoCountdown() {
 }
 
 function finishPlaySession() {
+  cancelSecretSessionLoad();
   setTextEdit(false);
   clearTextMemory();
   discardSessionCache();
@@ -430,27 +480,174 @@ function drawCameraStatus(layout, transition) {
   resetShader();
   noStroke();
   fill(255, 220 * transition);
-  textFont(scene.font);
+  textFont(scene.text.font);
   textAlign(CENTER, CENTER);
   textSize(22 * scene.ui.scale);
   text(message, 0, layout.previewY);
 }
 
-function drawSessionPhotoCountdown(previewY, layout, transition) {
+function drawSessionPhotoCountdownPattern(target, transition) {
   let countdown = scene.session.camera.countdown;
-  if (!countdown.active) return;
+  if (!countdown.active || target == null) return;
 
+  target.push();
+  target.resetShader();
+  target.noStroke();
+
+  let colors = [
+    [224, 56, 52],
+    [113, 204, 193],
+    [239, 0, 123],
+  ];
+  let numberColor = colors[constrain(3 - countdown.value, 0, 2)];
+  target.fill(...numberColor, 255 * transition);
+  target.textFont(scene.text.font);
+  target.textAlign(CENTER, CENTER);
+  let numberSize = max(
+    56 * scene.ui.scale,
+    min(target.width, target.height) * 0.12,
+  );
+  let spacingX = numberSize * 1.55;
+  let spacingY = numberSize * 1.35;
+  target.textSize(numberSize);
+
+  let stepProgress = ((millis() - countdown.startedAt) % 1000) / 1000;
+  let travel = min(spacingX, spacingY) * 0.7 * stepProgress;
+  let offsetX = countdown.patternPhaseX * spacingX +
+    cos(countdown.patternAngle) * travel;
+  let offsetY = countdown.patternPhaseY * spacingY +
+    sin(countdown.patternAngle) * travel;
+  let left = -target.width / 2 - spacingX * 2;
+  let right = target.width / 2 + spacingX * 2;
+  let top = -target.height / 2 - spacingY * 2;
+  let bottom = target.height / 2 + spacingY * 2;
+  let row = 0;
+
+  for (let y = top + offsetY; y <= bottom; y += spacingY) {
+    let stagger = row % 2 == 0 ? 0 : spacingX * 0.5;
+    for (let x = left + offsetX + stagger; x <= right; x += spacingX) {
+      target.text(countdown.value, x, y - numberSize * 0.08);
+    }
+    row += 1;
+  }
+  target.pop();
+}
+
+function drawCameraBrandLogo(layout, transition) {
+  let logo = scene.homeGallery.assets.logo;
+  if (logo == null || logo.width <= 1 || logo.height <= 1) return;
+  push();
   resetShader();
+  imageMode(CENTER);
+  tint(255, 255 * transition);
+  image(
+    logo,
+    0,
+    layout.logoY,
+    layout.logoWidth,
+    layout.logoHeight,
+  );
+  noTint();
+  pop();
+}
+
+function drawCameraExitChoice(gui, label, y, popupWidth, light = false) {
+  let choiceWidth = popupWidth * 0.36;
+  let choiceHeight = 62 * scene.ui.scale;
+  let pressed = gui.armed === true;
+  gui.bounds = { x: 0, y, w: choiceWidth, h: choiceHeight };
+  push();
+  resetShader();
+  translate(0, y + (pressed ? 4 * scene.ui.scale : 0));
+  scale(pressed ? 0.96 : 1);
+  rectMode(CENTER);
+  noFill();
+  stroke(light ? 255 : 25);
+  strokeWeight(2 * scene.ui.scale);
+  rect(0, 0, choiceWidth, choiceHeight);
   noStroke();
-  fill(255, 255 * transition);
-  textFont(scene.font);
+  fill(light ? 255 : 25);
+  textFont(scene.text.font);
   textAlign(CENTER, CENTER);
-  let countdownSize = min(width, height) * 0.25;
-  textSize(countdownSize);
-  let countdownX = (width + layout.previewWidth) / 4;
-  let countdownY = previewY - countdownSize / 10;
-  text(countdown.value, -countdownX, countdownY);
-  text(countdown.value, countdownX, countdownY);
+  textSize(choiceHeight * 0.44);
+  text(label, 0, -choiceHeight * 0.04);
+  pop();
+}
+
+function drawCameraExitConfirmation(prompt) {
+  prompt.exitTransition = animateData(
+    prompt.exitTransition,
+    prompt.exitConfirming ? 1 : 0,
+    0.18,
+  );
+  let popupTransition = prompt.exitTransition;
+  if (popupTransition < 0.01) {
+    scene.gui.cameraExitCancel.bounds = null;
+    scene.gui.cameraExitYes.bounds = null;
+    return;
+  }
+
+  let gl = _renderer.GL;
+  let depthTestEnabled = gl.isEnabled(gl.DEPTH_TEST);
+  let depthWriteEnabled = gl.getParameter(gl.DEPTH_WRITEMASK);
+  gl.disable(gl.DEPTH_TEST);
+  gl.depthMask(false);
+  try {
+    resetShader();
+    rectMode(CENTER);
+    noStroke();
+    fill(0, 150 * popupTransition);
+    rect(0, 0, width, height);
+
+    let popupAsset = scene.flowUi.slices.popup;
+    let popupWidth = min(width * 0.78, 560 * scene.ui.scale);
+    let popupHeight = min(height * 0.72, popupWidth * 1560 / 1808);
+    if (popupAsset?.width > 1) {
+      imageMode(CENTER);
+      tint(255, 255 * popupTransition);
+      image(popupAsset, 0, 0, popupWidth, popupHeight);
+      noTint();
+    }
+
+    resetShader();
+    fill(25, 25, 25, 255 * popupTransition);
+    textAlign(CENTER, CENTER);
+    textFont(scene.font);
+    textSize(popupWidth * 0.12);
+    text("Back", 0, -popupHeight * 0.25);
+    textSize(popupWidth * 0.1);
+    let phraseY = -popupHeight * 0.09;
+    let toWidth = textWidth("to ");
+    textFont(scene.text.font);
+    let homeWidth = textWidth("Home?");
+    let phraseLeft = -(toWidth + homeWidth) / 2;
+    textFont(scene.font);
+    textAlign(LEFT, CENTER);
+    text("to ", phraseLeft, phraseY);
+    textFont(scene.text.font);
+    text("Home?", phraseLeft + toWidth, phraseY);
+
+    scene.gui.cameraExitCancel.armed =
+      scene.ui.pointer.pressTarget == "cameraExitCancel";
+    drawCameraExitChoice(
+      scene.gui.cameraExitCancel,
+      "Cancel",
+      popupHeight * 0.13,
+      popupWidth,
+    );
+    scene.gui.cameraExitYes.armed =
+      scene.ui.pointer.pressTarget == "cameraExitYes";
+    drawCameraExitChoice(
+      scene.gui.cameraExitYes,
+      "Yes",
+      popupHeight * 0.38,
+      popupWidth,
+      true,
+    );
+  } finally {
+    gl.depthMask(depthWriteEnabled);
+    if (depthTestEnabled) gl.enable(gl.DEPTH_TEST);
+  }
 }
 
 function drawCameraSessionFrontUi() {
@@ -507,8 +704,10 @@ function drawCameraSessionFrontUi() {
   let overlayTransition = prompt.confirming
     ? transition * (1 - confirmTransition)
     : transition;
-  fill(0, 255 * 0.5 * overlayTransition);
-  rect(0, 0, width, height);
+  if (!scene.session.camera.countdown.active) {
+    fill(255, 235, 221, 255 * overlayTransition);
+    rect(0, 0, width, height);
+  }
   _renderer.GL.clear(_renderer.GL.DEPTH_BUFFER_BIT);
 
   let flashOpacity = scene.session.camera.flash;
@@ -521,28 +720,41 @@ function drawCameraSessionFrontUi() {
     );
   }
 
-  scene.gui.cameraTitle.update(
-    scene.elapsedTime,
-    uiPointer(),
-    uiPointerActive(),
-  );
-  scene.gui.cameraTitle.surface(
-    0,
-    titleY,
-    layout.titleWidth,
-    layout.controlHeight,
-    layout.controlRadius,
-  );
+  drawCameraBrandLogo(layout, overlayTransition);
+  if (!prompt.confirming) {
+    scene.gui.cameraExit.armed =
+      scene.ui.pointer.pressTarget == "cameraExit";
+    drawFlowSliceButton(
+      scene.gui.cameraExit,
+      "exitDark",
+      layout.exitX,
+      layout.exitY,
+      layout.exitWidth,
+      layout.exitHeight,
+    );
+  } else {
+    scene.gui.cameraExit.bounds = null;
+  }
+
   resetShader();
-  fill(255);
+  fill(79, 15, 47);
   textFont(scene.font);
   textAlign(CENTER, CENTER);
-  textSize(layout.controlHeight / 1.5);
-  text("Take a Picture", 0, titleY - layout.controlHeight / 10);
+  let reviewing = scene.session.photo != null;
+  let captureLabel = reviewing
+    ? "Here’s your photo"
+    : scene.session.camera.captureLabel;
+  let captureLabelSize = layout.controlHeight * 0.72;
+  let captureLabelWidth = layout.titleWidth - layout.controlHeight * 0.5;
+  textSize(captureLabelSize);
+  if (textWidth(captureLabel) > captureLabelWidth) {
+    captureLabelSize *= captureLabelWidth / textWidth(captureLabel);
+    textSize(captureLabelSize);
+  }
+  text(captureLabel, 0, titleY - layout.controlHeight / 10);
 
   noStroke();
   fill(255);
-  let reviewing = scene.session.photo != null;
   let previewBottom = previewY + layout.previewHeight / 2;
   let controlIsSwept = (controlY) =>
     prompt.confirming &&
@@ -568,19 +780,13 @@ function drawCameraSessionFrontUi() {
     );
     scene.gui.cameraNext.armed =
       scene.ui.pointer.pressTarget == "cameraNext";
-    scene.gui.cameraNext.update(
-      scene.elapsedTime,
-      uiPointer(),
-      uiPointerActive(),
-    );
-    scene.gui.cameraNext.button(
-      0,
+    drawFlowSliceButton(
+      scene.gui.cameraNext,
+      "next",
+      layout.actionX,
       nextY + buttonsOffset,
       layout.buttonWidth,
-      layout.controlHeight,
-      layout.controlRadius,
-      1,
-      ...scene.ui.actionColors.green,
+      layout.controlHeight * 1.25,
     );
   } else {
     scene.gui.cameraNext.bounds = null;
@@ -590,78 +796,34 @@ function drawCameraSessionFrontUi() {
   if (reviewing && !controlIsSwept(layout.retakeY)) {
     scene.gui.cameraTake.armed =
       scene.ui.pointer.pressTarget == "cameraTake";
-    scene.gui.cameraTake.update(
-      scene.elapsedTime,
-      uiPointer(),
-      uiPointerActive(),
-    );
-    scene.gui.cameraTake.button(
-      0,
+    drawFlowSliceButton(
+      scene.gui.cameraTake,
+      "retake",
+      -layout.actionX,
       layout.retakeY + buttonsOffset,
       layout.buttonWidth,
-      layout.controlHeight,
-      layout.controlRadius,
-      1,
-      ...scene.ui.actionColors.red,
+      layout.controlHeight * 1.25,
     );
   } else if (reviewing) {
     scene.gui.cameraTake.bounds = null;
   }
 
-  if (reviewing && !controlIsSwept(layout.cancelY)) {
-    scene.gui.cameraCancel.armed =
-      scene.ui.pointer.pressTarget == "cameraCancel";
-    scene.gui.cameraCancel.update(
-      scene.elapsedTime,
-      uiPointer(),
-      uiPointerActive(),
-    );
-    scene.gui.cameraCancel.button(
-      0,
-      layout.cancelY + buttonsOffset,
-      layout.buttonWidth,
-      layout.controlHeight,
-      layout.controlRadius,
-    );
-  } else if (reviewing) {
-    scene.gui.cameraCancel.bounds = null;
-  }
-
   if (!reviewing) {
     let controlsHiddenY = previewBottom - layout.controlHeight / 2;
     let takeY = lerp(controlsHiddenY, layout.takeY, transition);
-    let cancelY = lerp(controlsHiddenY, layout.cancelY, transition);
 
     scene.gui.cameraTake.armed =
       scene.ui.pointer.pressTarget == "cameraTake";
-    scene.gui.cameraTake.update(
-      scene.elapsedTime,
-      uiPointer(),
-      uiPointerActive(),
-    );
-    scene.gui.cameraTake.button(
+    drawFlowSliceButton(
+      scene.gui.cameraTake,
+      "capture",
       0,
       takeY,
-      layout.buttonWidth,
-      layout.controlHeight,
-      layout.controlRadius,
-    );
-
-    scene.gui.cameraCancel.armed =
-      scene.ui.pointer.pressTarget == "cameraCancel";
-    scene.gui.cameraCancel.update(
-      scene.elapsedTime,
-      uiPointer(),
-      uiPointerActive(),
-    );
-    scene.gui.cameraCancel.button(
-      0,
-      cancelY,
-      layout.buttonWidth,
-      layout.controlHeight,
-      layout.controlRadius,
+      layout.buttonWidth * 1.35,
+      layout.controlHeight * 1.25,
     );
   }
+  scene.gui.cameraCancel.bounds = null;
   _renderer.GL.clear(_renderer.GL.DEPTH_BUFFER_BIT);
 
   let preview = updateSessionCameraBuffer(
@@ -678,7 +840,7 @@ function drawCameraSessionFrontUi() {
     layout.previewHeight,
   );
   noFill();
-  stroke(255, 180 * transition);
+  stroke(79, 15, 47, 180 * transition);
   strokeWeight(2 * scene.ui.scale);
   rect(
     0,
@@ -688,7 +850,7 @@ function drawCameraSessionFrontUi() {
     layout.previewRadius,
   );
   drawCameraStatus({ ...layout, previewY }, transition);
-  drawSessionPhotoCountdown(previewY, layout, transition);
+  drawCameraExitConfirmation(prompt);
 
   pop();
 
@@ -698,6 +860,7 @@ function drawCameraSessionFrontUi() {
     prompt.confirming = false;
     scene.session.mode = "frame";
     resetSessionPhotoFrame();
+    startSessionPhotoFrameStage();
     scheduleSessionCacheSave();
     stopSessionCamera();
     data.loading.position.y = height;
