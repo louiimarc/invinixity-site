@@ -148,10 +148,11 @@ function draw() {
   noStroke();
 
   let printButton = uiButtonBounds("left");
-  printButton.y =
-    height / 2 -
-    scene.ui.button.padding * scene.ui.scale -
-    printButton.h / 2;
+  let controlsPadding = scene.ui.button.padding * scene.ui.scale;
+  let controlsVisibleY = uiSafeBottomY(
+    controlsPadding + printButton.h / 2,
+  );
+  let controlsHiddenY = uiHiddenBottomY(printButton.h, controlsPadding);
   scene.ui.textField.position = animateData(
     scene.ui.textField.position,
     scene.text.edit ? 1 : 0,
@@ -163,18 +164,19 @@ function draw() {
     data.loading.ready && scene.session.mode == "active" ? 1 : 0,
     0.125,
   );
-  let controlsHiddenOffset =
-    printButton.h + scene.ui.button.padding * scene.ui.scale * 2;
-  let controlsOffset = map(
+  let controlsY = map(
     scene.ui.controls.position,
     0,
     1,
-    controlsHiddenOffset,
-    0,
+    controlsHiddenY,
+    controlsVisibleY,
   );
-  printButton.y += controlsOffset;
+  printButton.y = controlsY;
   let printVisibleX = printButton.x;
-  let printHiddenX = -width / 2 - printButton.w;
+  let printHiddenX = uiHiddenLeftX(
+    printButton.w,
+    scene.ui.button.padding * scene.ui.scale,
+  );
   printButton.x = map(
     editTransition,
     0,
@@ -199,23 +201,24 @@ function draw() {
 
   let fieldGap = scene.ui.textField.gap * scene.ui.scale;
   let doneButton = uiButtonBounds("right");
-  doneButton.y += controlsOffset;
   let editDoneY =
-    height / 2 -
-    scene.ui.button.padding * scene.ui.scale -
-    doneButton.h / 2;
-  doneButton.y = lerp(doneButton.y, editDoneY, editTransition);
+    uiSafeBottomY(
+      scene.ui.button.padding * scene.ui.scale + doneButton.h / 2,
+    );
+  doneButton.y = lerp(controlsY, editDoneY, editTransition);
 
   let fieldHeight = printButton.h;
   let fieldRadius = printButton.r;
   let fieldClosedY = printButton.y;
   let fieldOpenY =
-    -height / 2 +
-    scene.ui.button.padding * scene.ui.scale +
-    fieldHeight / 2;
+    uiSafeTopY(
+      scene.ui.button.padding * scene.ui.scale + fieldHeight / 2,
+    );
   let fieldVisibleY = lerp(fieldClosedY, fieldOpenY, editTransition);
-  let doneHiddenX =
-    width / 2 + doneButton.w + scene.ui.button.padding * scene.ui.scale;
+  let doneHiddenX = uiHiddenRightX(
+    doneButton.w,
+    scene.ui.button.padding * scene.ui.scale,
+  );
   let doneX = map(editTransition, 0, 1, doneHiddenX, 0);
 
   scene.gui.done.armed = scene.ui.pointer.pressTarget == "done";
@@ -232,6 +235,7 @@ function draw() {
   let fieldClosedLeft = printVisibleX + printButton.w / 2 + fieldGap;
   let fieldOpenLeft =
     -width / 2 +
+    scene.ui.safeArea.left +
     scene.ui.button.padding * scene.ui.scale +
     138 * scene.ui.scale;
   let fieldLeft = map(
@@ -245,8 +249,10 @@ function draw() {
     editTransition,
     0,
     1,
-    width / 2 - scene.ui.button.padding * scene.ui.scale,
+    width / 2 - scene.ui.safeArea.right -
+      scene.ui.button.padding * scene.ui.scale,
     width / 2 -
+      scene.ui.safeArea.right -
       scene.ui.button.padding * scene.ui.scale -
       172 * scene.ui.scale,
   );
@@ -355,8 +361,8 @@ function drawControlSideSwitch() {
   let leftX = -width / 2 + padding + size / 2;
   let rightX = width / 2 - padding - size / 2;
   let x = lerp(rightX, leftX, controlSideMix());
-  let visibleY = height / 2 - padding - size / 2;
-  let hiddenY = height / 2 + size / 2;
+  let visibleY = uiSafeBottomY(padding + size / 2);
+  let hiddenY = uiHiddenBottomY(size, padding);
   let y = lerp(hiddenY, visibleY, state.position);
   scene.gui.sideSwitch.label = controlsOnRight() ? "<" : ">";
   scene.gui.sideSwitch.armed =

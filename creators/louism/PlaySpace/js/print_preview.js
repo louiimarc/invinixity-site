@@ -130,8 +130,9 @@ function capturePrintPreview(liveBaseSnapshot) {
     state.open = false;
     state.transition = 0;
     state.transitionTarget = 0;
+    let saveAsExample = scene.secretSession.recording;
     captureCurrentCreationRecipe();
-    if (scene.secretSession.recording) {
+    if (saveAsExample) {
       saveSpecialSessionExample(state.posterSnapshot)
         .then(() => finishPlaySession())
         .catch((error) => {
@@ -530,13 +531,13 @@ function drawPrintPreview() {
   let snapshotAspect = state.snapshot.width / state.snapshot.height;
   let paperSize = printPreviewPaperSize(snapshotAspect);
 
-  let buttonVisibleY = height / 2 - padding - buttonHeight / 2;
-  let buttonHiddenY = height / 2 + padding + buttonHeight / 2;
+  let buttonVisibleY = uiSafeBottomY(padding + buttonHeight / 2);
+  let buttonHiddenY = uiHiddenBottomY(buttonHeight, padding);
   let buttonY = lerp(buttonHiddenY, buttonVisibleY, state.transition);
   let buttonGap = padding / 2;
   let cancelX = -buttonGap / 2 - buttonWidth / 2;
   let okX = buttonGap / 2 + buttonWidth / 2;
-  let planeHiddenY = height / 2 + paperSize.height / 2 + padding;
+  let planeHiddenY = uiHiddenBottomY(paperSize.height / 2, padding);
   let planeVisibleY = -44 * scale;
   let planeY = lerp(planeHiddenY, planeVisibleY, state.transition);
 

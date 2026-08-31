@@ -67,8 +67,9 @@ function setupTextGlyphAssets() {
   }
 }
 
-function requestTextGlyphImage(entry) {
+function requestTextGlyphImage(entry, onSettled = null) {
   if (entry == null || entry.image != null || entry.loading || entry.failed) {
+    if (typeof onSettled == "function") onSettled();
     return;
   }
 
@@ -81,13 +82,36 @@ function requestTextGlyphImage(entry) {
       }
       entry.image = imageAsset;
       entry.loading = false;
+      if (typeof onSettled == "function") onSettled();
     },
     (error) => {
       entry.loading = false;
       entry.failed = true;
       console.warn(`Unable to load text glyph ${entry.path}`, error);
+      if (typeof onSettled == "function") onSettled();
     },
   );
+}
+
+function preloadAllTextGlyphImages() {
+  let entries = scene.text.glyphAssets.entries.filter(
+    (entry) => entry.image == null && !entry.loading && !entry.failed,
+  );
+  if (entries.length == 0) return;
+
+  data.amount += entries.length;
+  data.loading.status = true;
+  let nextIndex = 0;
+  let workerCount = min(3, entries.length);
+  let runNext = () => {
+    if (nextIndex >= entries.length) return;
+    let entry = entries[nextIndex++];
+    requestTextGlyphImage(entry, () => {
+      loaded();
+      runNext();
+    });
+  };
+  for (let index = 0; index < workerCount; index++) runNext();
 }
 
 function textGlyphGroupWeights(mix) {

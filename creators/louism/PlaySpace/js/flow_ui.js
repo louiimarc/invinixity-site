@@ -44,6 +44,7 @@ const PLAYSPACE_CARD_BACK_BACKGROUND_PATHS = [
 ];
 
 const PLAYSPACE_CARD_BACK_PATH = "assets/poster/back/card_back_side.png";
+const PLAYSPACE_BACKGROUND_DIM_ALPHA = 255 * 0.05;
 
 scene.flowUi = {
   slices: Object.create(null),
@@ -191,7 +192,7 @@ function drawEditorSessionChrome() {
   let padding = scene.ui.button.padding * scale;
   let poster = compositionBounds();
   let uiRgb = sessionPhotoFrameUiRgb();
-  let headerY = -height / 2 + padding + 48 * scale;
+  let headerY = uiSafeTopY(padding + 48 * scale);
   let exitWidth = min(poster.width * 0.2, 120 * scale);
   let exitHeight = exitWidth * 171 / 242;
 
@@ -206,7 +207,7 @@ function drawEditorSessionChrome() {
   drawFlowSliceButton(
     scene.gui.frameExit,
     uiRgb[0] < 128 ? "exitDark" : "exitLight",
-    -width / 2 + padding + exitWidth / 2,
+    -width / 2 + scene.ui.safeArea.left + padding + exitWidth / 2,
     headerY,
     exitWidth,
     exitHeight,
@@ -215,7 +216,7 @@ function drawEditorSessionChrome() {
   let timerAsset = scene.flowUi.slices.timer;
   let timerWidth = min(poster.width * 0.25, 150 * scale);
   let timerHeight = timerWidth * 251 / 469;
-  let timerX = width / 2 - padding - timerWidth / 2;
+  let timerX = width / 2 - scene.ui.safeArea.right - padding - timerWidth / 2;
   if (timerAsset?.width > 1) {
     imageMode(CENTER);
     image(timerAsset, timerX, headerY, timerWidth, timerHeight);
@@ -278,6 +279,16 @@ function drawSelectedFlowBackground(target = scene.workspace) {
     asset,
     bounds.x + bounds.width / 2 - width / 2,
     bounds.y + bounds.height / 2 - height / 2,
+    bounds.width,
+    bounds.height,
+  );
+  target.translate(0, 0, scene.layer.background + 16);
+  target.rectMode(CORNER);
+  target.noStroke();
+  target.fill(0, PLAYSPACE_BACKGROUND_DIM_ALPHA);
+  target.rect(
+    bounds.x - width / 2,
+    bounds.y - height / 2,
     bounds.width,
     bounds.height,
   );
@@ -488,6 +499,11 @@ function drawBackgroundFramePreview(
   push();
   imageMode(CENTER);
   image(asset, x, y, cardWidth, cardHeight);
+  translate(0, 0, 16);
+  rectMode(CENTER);
+  noStroke();
+  fill(0, PLAYSPACE_BACKGROUND_DIM_ALPHA);
+  rect(x, y, cardWidth, cardHeight);
   if (cardSnapshot == null || cardSnapshot.width <= 1) {
     pop();
     return;
@@ -495,7 +511,7 @@ function drawBackgroundFramePreview(
   let innerWidth = cardWidth * scene.creationCard.widthRatio;
   let innerHeight = innerWidth * scene.creationCard.height /
     scene.creationCard.width;
-  translate(0, 0, 32);
+  translate(0, 0, 16);
   image(cardSnapshot, x, y, innerWidth, innerHeight);
   pop();
 }
@@ -518,7 +534,7 @@ function drawBackgroundFramePicker() {
   fill(117, 61, 91);
   rect(0, 0, width, height);
 
-  let headingY = -height / 2 + 54 * scene.ui.scale;
+  let headingY = uiSafeTopY(54 * scene.ui.scale);
   drawFlowHeading(
     "Pick a Background Frame",
     "Slide to choose the layer behind your card",
@@ -527,12 +543,12 @@ function drawBackgroundFramePicker() {
   );
 
   let contentTop = headingY + 72 * scene.ui.scale;
-  let contentBottom = height / 2 - 132 * scene.ui.scale;
+  let contentBottom = uiSafeBottomY(132 * scene.ui.scale);
   let availableHeight = max(100 * scene.ui.scale, contentBottom - contentTop);
   let selectedHeight = min(
-    500 * scene.ui.scale,
     availableHeight,
-    height * 0.56,
+    height * 0.68,
+    width * 1.08,
   );
   let selectedWidth = selectedHeight * 9 / 16;
   let carouselY = (contentTop + contentBottom) / 2;
@@ -553,12 +569,14 @@ function drawBackgroundFramePicker() {
     let offset = index - state.position;
     while (offset > count / 2) offset -= count;
     while (offset < -count / 2) offset += count;
-    if (abs(offset) > 2.2) continue;
     let distance = min(1, abs(offset));
     let itemScale = lerp(1, 0.78, distance);
     let cardWidth = selectedWidth * itemScale;
     let cardHeight = selectedHeight * itemScale;
     let x = offset * state.slotSpacing;
+    if (x + cardWidth / 2 < -width / 2 || x - cardWidth / 2 > width / 2) {
+      continue;
+    }
     let y = carouselY;
     let asset = scene.flowUi.backgrounds[index];
     drawBackgroundFramePreview(
@@ -572,7 +590,7 @@ function drawBackgroundFramePicker() {
     state.itemBounds.push({ index, x, y, w: cardWidth, h: cardHeight });
   }
 
-  let buttonY = height / 2 - 70 * scene.ui.scale;
+  let buttonY = uiSafeBottomY(70 * scene.ui.scale);
   scene.gui.backgroundCancel.armed = scene.ui.pointer.pressTarget == "backgroundCancel";
   drawFlowSliceButton(
     scene.gui.backgroundCancel,

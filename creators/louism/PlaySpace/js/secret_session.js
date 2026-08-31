@@ -59,6 +59,7 @@ scene.secretSession = {
   facePath: null,
   faceGender: null,
   generatedName: "",
+  faces: Object.create(null),
   names: {
     female: [],
     male: [],
@@ -98,6 +99,36 @@ function preloadSecretSessionNames() {
       },
     );
   }
+}
+
+function preloadSecretSessionFaces() {
+  let paths = PLAYSPACE_SECRET_FACE_PATHS.filter(
+    (path) => scene.secretSession.faces[path] == null,
+  );
+  if (paths.length == 0) return;
+
+  data.amount += paths.length;
+  data.loading.status = true;
+  let nextIndex = 0;
+  let workerCount = min(3, paths.length);
+  let runNext = () => {
+    if (nextIndex >= paths.length) return;
+    let path = paths[nextIndex++];
+    loadImage(
+      path,
+      (photo) => {
+        scene.secretSession.faces[path] = photo;
+        loaded();
+        runNext();
+      },
+      (error) => {
+        console.warn(`Unable to preload PlaySpace seed face ${path}`, error);
+        loaded();
+        runNext();
+      },
+    );
+  };
+  for (let index = 0; index < workerCount; index++) runNext();
 }
 
 function secretSessionCanToggle() {
@@ -361,13 +392,19 @@ function loadSecretDemoIndex(index) {
   scene.session.mode = "secretDemoLoading";
   stopCreationDemo();
   let requestId = ++viewer.requestId;
+  let applyPhoto = (photo) => {
+    if (requestId != viewer.requestId || !viewer.open) return;
+    viewer.loading = false;
+    if (!applySecretDemoRecipe(demoRecipe, photo)) closeSecretDemo();
+  };
+  let cachedPhoto = scene.secretSession.faces[facePath];
+  if (cachedPhoto != null) {
+    applyPhoto(cachedPhoto);
+    return true;
+  }
   loadImage(
     facePath,
-    (photo) => {
-      if (requestId != viewer.requestId || !viewer.open) return;
-      viewer.loading = false;
-      if (!applySecretDemoRecipe(demoRecipe, photo)) closeSecretDemo();
-    },
+    applyPhoto,
     (error) => {
       if (requestId != viewer.requestId) return;
       viewer.loading = false;
@@ -447,14 +484,14 @@ function drawSecretDemoStatus() {
   text(
     `${viewer.index + 1} / ${viewer.records.length}  •  ${recipe.name}`,
     0,
-    -height / 2 + 20 * scene.ui.scale,
+    uiSafeTopY(20 * scene.ui.scale),
   );
   textAlign(CENTER, BOTTOM);
   textSize(14 * scene.ui.scale);
   text(
     "← Previous    Next →    ø Close",
     0,
-    height / 2 - 20 * scene.ui.scale,
+    uiSafeBottomY(20 * scene.ui.scale),
   );
   pop();
 }
@@ -488,18 +525,24 @@ function beginSecretSession() {
   let facePath = randomSecretSessionFacePath();
   applySecretSessionName(facePath);
 
+  let applyPhoto = (photo) => {
+    if (requestId != scene.secretSession.requestId) return;
+    scene.secretSession.loading = false;
+    scene.secretSession.lastFacePath = facePath;
+    scene.session.photo = photo;
+    scene.session.mode = "frame";
+    startSessionPhotoFrameStage();
+    scheduleSessionCacheSave(true);
+    detectSessionPhotoFaces(photo);
+  };
+  let cachedPhoto = scene.secretSession.faces[facePath];
+  if (cachedPhoto != null) {
+    applyPhoto(cachedPhoto);
+    return true;
+  }
   loadImage(
     facePath,
-    (photo) => {
-      if (requestId != scene.secretSession.requestId) return;
-      scene.secretSession.loading = false;
-      scene.secretSession.lastFacePath = facePath;
-      scene.session.photo = photo;
-      scene.session.mode = "frame";
-      startSessionPhotoFrameStage();
-      scheduleSessionCacheSave(true);
-      detectSessionPhotoFaces(photo);
-    },
+    applyPhoto,
     (error) => {
       if (requestId != scene.secretSession.requestId) return;
       scene.secretSession.loading = false;

@@ -920,10 +920,13 @@ function drawPhotoFrameStage() {
   let padding = scene.ui.button.padding * scale;
   let controlGap = 12 * scale;
   let card = creationCardBounds();
-  let titleY = card.y - height / 2 - max(titleHeight * 0.75, padding);
+  let titleY = max(
+    card.y - height / 2 - max(titleHeight * 0.75, padding),
+    uiSafeTopY(padding + titleHeight / 2),
+  );
   let buttonWidth = min(card.width * 0.44, 220 * scale);
   let controlsY = min(
-    height / 2 - padding - titleHeight / 2,
+    uiSafeBottomY(padding + titleHeight / 2),
     card.y + card.height - height / 2 + titleHeight,
   );
   let controlsOffset = buttonWidth / 2 + controlGap / 2;
@@ -958,18 +961,8 @@ function drawPhotoFrameStage() {
   drawSessionPhotoFrameReference();
   drawPhotoFrameCardOverlay(card, 255 * transition);
 
-  let headerY = -height / 2 + padding + titleHeight / 2;
-  let exitWidth = min(width * 0.12, 120 * scale);
-  let exitHeight = exitWidth * 171 / 242;
-  scene.gui.frameExit.armed = scene.ui.pointer.pressTarget == "frameExit";
-  drawFlowSliceButton(
-    scene.gui.frameExit,
-    uiRgb[0] < 128 ? "exitDark" : "exitLight",
-    -width / 2 + padding + exitWidth / 2,
-    headerY,
-    exitWidth,
-    exitHeight,
-  );
+  let headerY = uiSafeTopY(padding + titleHeight / 2);
+  scene.gui.frameExit.bounds = null;
 
   let timerAsset = scene.flowUi.slices.timer;
   let timerWidth = min(width * 0.15, 150 * scale);
@@ -978,7 +971,7 @@ function drawPhotoFrameStage() {
     imageMode(CENTER);
     image(
       timerAsset,
-      width / 2 - padding - timerWidth / 2,
+      width / 2 - scene.ui.safeArea.right - padding - timerWidth / 2,
       headerY,
       timerWidth,
       timerHeight,
@@ -1056,7 +1049,7 @@ function drawPhotoFrameStage() {
     resetShader();
     noStroke();
     let controlTransition = frame.reviewTransition;
-    let hiddenY = height / 2 + titleHeight;
+    let hiddenY = uiHiddenBottomY(titleHeight, padding);
     let animatedControlsY = lerp(hiddenY, controlsY, controlTransition);
 
     scene.gui.frameNext.armed =
@@ -1093,11 +1086,10 @@ function drawPhotoFrameStage() {
         : "Continue until you return to the start";
     drawJumpingPhotoFrameGuide(
       instruction,
-      height / 2 - padding,
+      uiSafeBottomY(padding),
       guideTextSize,
     );
   }
   drawPhotoFramePointer(card, transition, uiRgb);
-  drawCameraExitConfirmation(scene.session.cameraPrompt);
   pop();
 }

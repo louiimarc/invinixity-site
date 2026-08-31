@@ -142,27 +142,7 @@ function uiButtonAtPointer() {
   }
 
   if (scene.session.mode == "frame") {
-    if (
-      scene.session.cameraPrompt.exitConfirming ||
-      scene.session.cameraPrompt.exitTransition > 0.05
-    ) {
-      if (
-        scene.session.cameraPrompt.exitConfirming &&
-        scene.session.cameraPrompt.exitTransition > 0.9 &&
-        scene.gui.cameraExitCancel.hitTest()
-      ) {
-        return "cameraExitCancel";
-      }
-      if (
-        scene.session.cameraPrompt.exitConfirming &&
-        scene.session.cameraPrompt.exitTransition > 0.9 &&
-        scene.gui.cameraExitYes.hitTest()
-      ) {
-        return "cameraExitYes";
-      }
-      return "frameExitPrompt";
-    }
-    if (scene.gui.frameExit.hitTest()) return "frameExit";
+    scene.gui.frameExit.bounds = null;
   }
 
   if (scene.session.mode == "active") {

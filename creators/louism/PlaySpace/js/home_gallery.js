@@ -45,7 +45,9 @@ function preloadHomeGalleryAssets() {
 }
 
 function setupHomeGallery() {
-  refreshHomeExamples();
+  data.amount++;
+  data.loading.status = true;
+  refreshHomeExamples().finally(loaded);
 }
 
 function homeGalleryRelativeSlot(index, position, count) {
@@ -56,12 +58,7 @@ function homeGalleryRelativeSlot(index, position, count) {
 }
 
 function homeGalleryDisplayCards() {
-  if (scene.homeGallery.examples.length > 0) {
-    return scene.homeGallery.examples;
-  }
-  return scene.flowUi.backgrounds
-    .filter((thumbnail) => thumbnail?.width > 1)
-    .map((thumbnail) => ({ thumbnail }));
+  return scene.homeGallery.examples;
 }
 
 async function refreshHomeExamples() {
@@ -95,7 +92,7 @@ async function refreshHomeExamples() {
 }
 
 function homeGalleryLayout() {
-  let cardHeight = min(height * 0.36, width * 0.72, 420 * scene.ui.scale);
+  let cardHeight = min(width, height) * 0.6;
   let cardWidth = cardHeight * 9 / 16;
   let centerY = height * 0.05;
   let spacing = cardWidth * 0.96;
@@ -351,10 +348,13 @@ function drawHomeGallery(target = scene.workspace) {
     try {
       for (let cardLayout of layouts) {
         let distance = abs(cardLayout.slot);
-        if (distance > 2.65) continue;
         let direction = cardLayout.slot == 0 ? 0 : Math.sign(cardLayout.slot);
         let scaleValue = max(0.68, 1 - distance * 0.15);
         let x = cardLayout.slot * gallery.spacing;
+        let halfWidth = gallery.cardWidth * scaleValue / 2;
+        if (x + halfWidth < -width / 2 || x - halfWidth > width / 2) {
+          continue;
+        }
         let y = gallery.centerY + distance * 10 * scene.ui.scale;
         let angleY = -direction * min(24, distance * 17);
         target.push();

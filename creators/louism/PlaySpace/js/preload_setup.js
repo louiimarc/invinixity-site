@@ -56,7 +56,8 @@ function setup() {
   scene.workspace.angleMode(DEGREES);
   scene.workspace.textFont(scene.text.font);
   setupTextGlyphAssets();
-  prefetchTextGlyphsForCurrentWords();
+  preloadAllTextGlyphImages();
+  preloadSecretSessionFaces();
   setupHomeGallery();
   restoreDownloadHandoff();
 

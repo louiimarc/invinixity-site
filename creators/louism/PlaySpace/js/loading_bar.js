@@ -81,7 +81,7 @@ data.loading.bar = function () {
         12 * scene.ui.scale,
         6 * scene.ui.scale,
       );
-      fill(205, 221, 70);
+      fill(0, 26);
       rectMode(CORNER);
       rect(
         data.loading.position.x - barSize * 2,

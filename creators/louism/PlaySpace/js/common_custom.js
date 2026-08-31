@@ -35,7 +35,7 @@ var scene = {
         "4D1430",
       ],
       darkForegroundBackgrounds: ["DBDCDA", "7BCBBB", "CDDD46"],
-      sourcePath: "assets/poster/overlay/foreground.svg",
+      sourcePath: "assets/poster/overlay/foreground.svg?v=20260831-new-overlay",
       artwork: null,
       textMask: null,
       foregroundMix: 0,
@@ -642,6 +642,7 @@ scene.content = {
     scaleDefault: 0.5,
     scaleRange: 160,
     scaleSmooth: 0.18,
+    glyphScale: 0.9,
   },
 };
 
@@ -656,6 +657,13 @@ scene.ui = {
   scale: 1,
   minimumScale: 0.75,
   maximumScale: 1.35,
+  safeArea: {
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    viewportKey: "",
+  },
   button: {
     width: 136,
     height: 68,
@@ -811,6 +819,47 @@ function updateUiScale() {
     scene.ui.minimumScale,
     scene.ui.maximumScale,
   );
+  updateUiSafeArea();
+}
+
+function updateUiSafeArea() {
+  let safe = scene.ui.safeArea;
+  let viewportKey = `${window.innerWidth}x${window.innerHeight}`;
+  if (safe.viewportKey == viewportKey) return;
+  let styles = getComputedStyle(document.documentElement);
+  let value = (name) => max(
+    0,
+    Number.parseFloat(styles.getPropertyValue(name)) || 0,
+  );
+  safe.top = value("--playspace-safe-top");
+  safe.right = value("--playspace-safe-right");
+  safe.bottom = value("--playspace-safe-bottom");
+  safe.left = value("--playspace-safe-left");
+  safe.viewportKey = viewportKey;
+}
+
+function uiSafeTopY(padding = 0) {
+  return -height / 2 + scene.ui.safeArea.top + padding;
+}
+
+function uiSafeBottomY(padding = 0) {
+  return height / 2 - scene.ui.safeArea.bottom - padding;
+}
+
+function uiHiddenTopY(halfExtent = 0, padding = 0) {
+  return -height / 2 - scene.ui.safeArea.top - halfExtent - padding;
+}
+
+function uiHiddenBottomY(halfExtent = 0, padding = 0) {
+  return height / 2 + scene.ui.safeArea.bottom + halfExtent + padding;
+}
+
+function uiHiddenLeftX(halfExtent = 0, padding = 0) {
+  return -width / 2 - scene.ui.safeArea.left - halfExtent - padding;
+}
+
+function uiHiddenRightX(halfExtent = 0, padding = 0) {
+  return width / 2 + scene.ui.safeArea.right + halfExtent + padding;
 }
 
 function setUiPointer(x = mouseX, y = mouseY) {
@@ -861,9 +910,9 @@ function uiButtonBounds(side = "left") {
   let padding = scene.ui.button.padding * scale;
   let x =
     side == "right"
-      ? width / 2 - padding - w / 2
-      : -width / 2 + padding + w / 2;
-  let y = -height / 2 + padding + h / 2;
+      ? width / 2 - scene.ui.safeArea.right - padding - w / 2
+      : -width / 2 + scene.ui.safeArea.left + padding + w / 2;
+  let y = uiSafeTopY(padding + h / 2);
 
   return { x, y, w, h, r };
 }
@@ -1664,13 +1713,15 @@ function textSizeForWordIndex(wordIndex, baseSize) {
     -scaleRange,
     scaleRange,
   );
-  if (entry == null) return baseSize + target;
+  if (entry == null) {
+    return (baseSize + target) * scene.content.text.glyphScale;
+  }
 
   let current = scene.text.sizeAnimations[entry.key];
   if (!Number.isFinite(current)) current = target;
   current = animateData(current, target, scene.content.text.scaleSmooth);
   scene.text.sizeAnimations[entry.key] = current;
-  return baseSize + current;
+  return (baseSize + current) * scene.content.text.glyphScale;
 }
 
 function loadStoredTextPath(path) {

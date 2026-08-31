@@ -248,8 +248,8 @@ function sessionCameraLayout() {
     logoWidth,
     logoHeight,
     logoY: -height * 0.36,
-    exitX: -width / 2 + padding + exitWidth / 2,
-    exitY: -height / 2 + padding + exitHeight / 2,
+    exitX: -width / 2 + scene.ui.safeArea.left + padding + exitWidth / 2,
+    exitY: uiSafeTopY(padding + exitHeight / 2),
     exitWidth,
     exitHeight,
     previewWidth,
@@ -632,7 +632,7 @@ function drawCameraExitConfirmation(prompt) {
     drawCameraExitChoice(
       scene.gui.cameraExitCancel,
       "Cancel",
-      popupHeight * 0.13,
+      popupHeight * 0.15,
       popupWidth,
     );
     scene.gui.cameraExitYes.armed =
@@ -640,7 +640,7 @@ function drawCameraExitConfirmation(prompt) {
     drawCameraExitChoice(
       scene.gui.cameraExitYes,
       "Yes",
-      popupHeight * 0.38,
+      popupHeight * 0.31,
       popupWidth,
       true,
     );
@@ -678,17 +678,28 @@ function drawCameraSessionFrontUi() {
     0.12,
   );
   let confirmTransition = scene.session.camera.confirmTransition;
-  let titleHiddenY = -height / 2 - layout.padding - layout.controlHeight / 2;
+  let titleHiddenY = uiHiddenTopY(layout.controlHeight, layout.padding);
   let titleY = prompt.confirming
     ? lerp(layout.titleY, titleHiddenY, confirmTransition)
     : lerp(titleHiddenY, layout.titleY, transition);
-  let buttonsOffset = (1 - transition) * (layout.controlHeight * 3);
+  let buttonsHiddenY = uiHiddenBottomY(
+    layout.controlHeight,
+    layout.padding,
+  );
+  let cameraControlY = (visibleY) => lerp(
+    buttonsHiddenY,
+    visibleY,
+    transition,
+  );
   let previewRestY = lerp(
-    height / 2 + layout.previewHeight / 2,
+    uiHiddenBottomY(layout.previewHeight / 2, layout.padding),
     layout.previewY,
     transition,
   );
-  let previewExitY = height / 2 + layout.previewHeight / 2;
+  let previewExitY = uiHiddenBottomY(
+    layout.previewHeight / 2,
+    layout.padding,
+  );
   let previewY = prompt.confirming
     ? lerp(layout.previewY, previewExitY, confirmTransition)
     : previewRestY;
@@ -756,6 +767,7 @@ function drawCameraSessionFrontUi() {
   noStroke();
   fill(255);
   let previewBottom = previewY + layout.previewHeight / 2;
+  let behindPreviewY = previewBottom - layout.controlHeight * 0.82;
   let controlIsSwept = (controlY) =>
     prompt.confirming &&
     previewBottom >= controlY + layout.controlHeight / 2;
@@ -772,9 +784,8 @@ function drawCameraSessionFrontUi() {
   let nextVisible =
     nextTarget > 0 || scene.session.camera.nextTransition > 0.01;
   if (nextVisible && !controlIsSwept(layout.nextY)) {
-    let nextHiddenY = previewBottom - layout.controlHeight / 2;
     let nextY = lerp(
-      nextHiddenY,
+      behindPreviewY,
       layout.nextY,
       scene.session.camera.nextTransition,
     );
@@ -784,7 +795,7 @@ function drawCameraSessionFrontUi() {
       scene.gui.cameraNext,
       "next",
       layout.actionX,
-      nextY + buttonsOffset,
+      cameraControlY(nextY),
       layout.buttonWidth,
       layout.controlHeight * 1.25,
     );
@@ -800,7 +811,7 @@ function drawCameraSessionFrontUi() {
       scene.gui.cameraTake,
       "retake",
       -layout.actionX,
-      layout.retakeY + buttonsOffset,
+      cameraControlY(layout.retakeY),
       layout.buttonWidth,
       layout.controlHeight * 1.25,
     );
@@ -809,8 +820,7 @@ function drawCameraSessionFrontUi() {
   }
 
   if (!reviewing) {
-    let controlsHiddenY = previewBottom - layout.controlHeight / 2;
-    let takeY = lerp(controlsHiddenY, layout.takeY, transition);
+    let takeY = lerp(behindPreviewY, layout.takeY, transition);
 
     scene.gui.cameraTake.armed =
       scene.ui.pointer.pressTarget == "cameraTake";

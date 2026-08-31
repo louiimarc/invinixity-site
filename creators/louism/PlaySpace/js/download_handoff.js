@@ -147,6 +147,16 @@ function setupDownloadHandoff() {
   overlay.hidden = true;
   overlay.innerHTML = `
     <div class="handoff-card" role="dialog" aria-modal="true">
+      <img
+        class="handoff-edge-decoration handoff-edge-decoration-left"
+        src="assets/home/background_top_left_graphic.png"
+        alt=""
+      >
+      <img
+        class="handoff-edge-decoration handoff-edge-decoration-right"
+        src="assets/home/background_top_right_graphic.png"
+        alt=""
+      >
       <h1 class="handoff-title">Preparing your poster...</h1>
       <p class="handoff-copy">One moment while we make your download.</p>
       <div class="handoff-poster-wrap">
@@ -307,6 +317,7 @@ async function beginDownloadHandoff(posterSnapshot) {
   downloadHandoff.scanExpiresAt = 0;
   prepareDownloadHandoffPosterScene();
   downloadHandoff.stage = "preparing";
+  downloadHandoffElement(".handoff-card")?.classList.remove("is-poster-scene");
   downloadHandoff.overlay.hidden = false;
   downloadHandoffElement(".handoff-title").textContent =
     "Preparing your poster...";
@@ -331,11 +342,24 @@ async function beginDownloadHandoff(posterSnapshot) {
     });
     if (!posterResponse.ok) throw new Error("Unable to save poster");
     let session = await posterResponse.json();
+    if (session.exampleUrl == null) {
+      let exampleResponse = await fetch("/api/examples", {
+        method: "POST",
+        headers: { "Content-Type": "image/png" },
+        body: posterBlob,
+      });
+      if (!exampleResponse.ok) {
+        throw new Error("Unable to save poster example");
+      }
+      let savedExample = await exampleResponse.json();
+      session.exampleUrl = savedExample.url;
+    }
     downloadHandoff.downloadUrl = session.downloadUrl;
     downloadHandoff.token = session.token;
     downloadHandoff.posterImageUrl = `/poster/${session.token}.png`;
     downloadHandoff.scanExpiresAt = Date.now() + 60000;
     prepareDownloadHandoffPosterScene();
+    refreshHomeExamples();
     saveDownloadHandoff(session.expiresAt);
     if (downloadHandoff.config.skipWifi) showPosterDownloadStep();
     else showWifiJoinStep();
@@ -400,6 +424,7 @@ function startDownloadScanCountdown() {
 function showWifiJoinStep() {
   let config = downloadHandoff.config;
   downloadHandoff.stage = "wifi";
+  downloadHandoffElement(".handoff-card")?.classList.remove("is-poster-scene");
   setDownloadHandoffProgress(1);
   downloadHandoffElement(".handoff-title").textContent =
     `Please scan to join “${config.wifiName}”`;
@@ -422,6 +447,7 @@ function showWifiJoinStep() {
 
 function showPosterDownloadStep() {
   downloadHandoff.stage = "download";
+  downloadHandoffElement(".handoff-card")?.classList.add("is-poster-scene");
   setDownloadHandoffProgress(2);
   downloadHandoffElement(".handoff-title").textContent =
     "Your own Poster is finished!";
@@ -447,6 +473,7 @@ function showPosterDownloadStep() {
 
 function showDownloadHandoffError(error) {
   downloadHandoff.stage = "error";
+  downloadHandoffElement(".handoff-card")?.classList.remove("is-poster-scene");
   downloadHandoffElement(".handoff-title").textContent =
     "The download station needs attention";
   downloadHandoffElement(".handoff-copy").textContent =
@@ -463,6 +490,7 @@ function closeDownloadHandoff() {
   downloadHandoff.posterImageUrl = "";
   downloadHandoff.token = "";
   downloadHandoff.posterSnapshot = null;
+  downloadHandoffElement(".handoff-card")?.classList.remove("is-poster-scene");
   downloadHandoff.overlay.hidden = true;
 }
 
@@ -470,4 +498,5 @@ function completeDownloadHandoff() {
   discardDownloadHandoff();
   finishPlaySession();
   closeDownloadHandoff();
+  refreshHomeExamples();
 }

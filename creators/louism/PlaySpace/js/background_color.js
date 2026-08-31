@@ -10,10 +10,26 @@ function sizedFrameOverlaySvg(source) {
   );
 }
 
+function frameOverlayPathWithFill(path, fill) {
+  if (/style="[^"]*fill:[^;"]+/.test(path)) {
+    return path.replace(
+      /(style="[^"]*fill:)[^;"]+/,
+      (match, prefix) => prefix + fill,
+    );
+  }
+  if (/style="/.test(path)) {
+    return path.replace(/style="/, `style="fill:${fill};`);
+  }
+  return path.replace(/\/>$/, ` style="fill:${fill};"/>`);
+}
+
 function frameOverlayArtworkSvg(source) {
-  return sizedFrameOverlaySvg(source).replace(
-    /(<path id="Text"[^>]*style="[^"]*fill:)#[0-9a-fA-F]{6}/,
-    (match, prefix) => prefix + "none",
+  let sizedSource = sizedFrameOverlaySvg(source);
+  let textPath = sizedSource.match(/<path id="Text"[^>]*>/)?.[0];
+  if (textPath == null) return sizedSource;
+  return sizedSource.replace(
+    textPath,
+    frameOverlayPathWithFill(textPath, "none"),
   );
 }
 
@@ -22,10 +38,7 @@ function frameOverlayTextMaskSvg(source) {
   let svgTag = sizedSource.match(/<svg\b[^>]*>/)?.[0];
   let textPath = sizedSource.match(/<path id="Text"[^>]*>/)?.[0];
   if (svgTag == null || textPath == null) return null;
-  textPath = textPath.replace(
-    /fill:#[0-9a-fA-F]{6}/,
-    "fill:#ffffff",
-  );
+  textPath = frameOverlayPathWithFill(textPath, "#ffffff");
   return '<?xml version="1.0" encoding="UTF-8"?>' +
     svgTag + textPath + "</svg>";
 }

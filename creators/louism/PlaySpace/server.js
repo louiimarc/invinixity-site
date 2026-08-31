@@ -244,16 +244,29 @@ async function handleRequest(request, response) {
       let token = crypto.randomBytes(9).toString("base64url");
       let file = path.join(downloadDirectory, `${token}.png`);
       let expiresAt = Date.now() + expiryMs;
-      fs.writeFile(file, Buffer.concat(chunks), (error) => {
+      let image = Buffer.concat(chunks);
+      fs.writeFile(file, image, (error) => {
         if (error != null) {
           sendJson(response, 500, { error: "Unable to save poster" });
           return;
         }
-        posterSessions.set(token, { file, expiresAt });
-        sendJson(response, 201, {
-          token,
-          downloadUrl: `${publicOrigin}/d/${token}`,
-          expiresAt,
+        let exampleFilename = nextExampleFilename();
+        let exampleFile = path.join(exampleDirectory, exampleFilename);
+        fs.writeFile(exampleFile, image, (exampleError) => {
+          if (exampleError != null) {
+            fs.unlink(file, () => {});
+            sendJson(response, 500, {
+              error: "Unable to save poster example",
+            });
+            return;
+          }
+          posterSessions.set(token, { file, expiresAt });
+          sendJson(response, 201, {
+            token,
+            downloadUrl: `${publicOrigin}/d/${token}`,
+            exampleUrl: `/assets/examples/generated/${exampleFilename}`,
+            expiresAt,
+          });
         });
       });
     });
@@ -332,8 +345,13 @@ async function handleRequest(request, response) {
     }
     let contentType = mimeTypes[path.extname(filePath).toLowerCase()] ||
       "application/octet-stream";
+    let cacheControl = url.pathname.startsWith("/assets/") ||
+        url.pathname.startsWith("/shader/") ||
+        url.pathname.startsWith("/vendor/")
+      ? "public, max-age=3600"
+      : "no-cache";
     response.writeHead(200, {
-      "Cache-Control": "no-cache",
+      "Cache-Control": cacheControl,
       "Content-Length": stat.size,
       "Content-Type": contentType,
       "X-Content-Type-Options": "nosniff",
