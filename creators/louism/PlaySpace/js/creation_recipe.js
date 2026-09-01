@@ -90,6 +90,9 @@ function cleanCreationRecipe(input) {
     createdAt: Number.isFinite(input.createdAt) ? input.createdAt : Date.now(),
     name,
     namePattern: creationRecipeNamePattern(name),
+    textureShuffleSeed: Number.isInteger(input.textureShuffleSeed)
+      ? input.textureShuffleSeed
+      : 1,
     background: {
       paletteIndex: Math.max(0, Math.round(input.background?.paletteIndex ?? 0)),
     },
@@ -148,6 +151,7 @@ class CreationRecipeRecorder {
         ? options.createdAt
         : Date.now(),
       name: scene.text.buffer,
+      textureShuffleSeed: scene.text.textureShuffleSeed,
       background: {
         paletteIndex: frameOverlayPaletteIndex(),
       },

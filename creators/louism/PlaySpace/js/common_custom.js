@@ -627,6 +627,7 @@ scene.text = {
   storageKey: "playspace.text.v1",
   hasSavedSession: false,
   textureMixes: Object.create(null),
+  textureShuffleSeed: 1,
   glyphAssets: {
     entries: [],
     byGroup: Object.create(null),
@@ -740,19 +741,8 @@ scene.ui = {
   texturePad: {
     position: 0,
     bounds: null,
-    active: false,
-    detent: 0,
-    progress: 0,
-    resize: 1,
-    resizing: false,
-    resizeMoved: false,
-    resizeStartX: 0,
-    resizeStartY: 0,
-    resizeStartProgress: 1,
     titleWidth: 0,
     titleWidthScale: 0,
-    dotScales: [],
-    previewMix: null,
   },
   layerBar: {
     position: 0,
@@ -1228,11 +1218,6 @@ function setTextEdit(value) {
   }
 
   scene.text.edit = nextEdit;
-  if (editChanged && nextEdit) {
-    scene.ui.texturePad.detent = 0;
-    scene.ui.texturePad.progress = 0;
-    scene.ui.texturePad.resizing = false;
-  }
   if (editChanged) {
     let to = creationCardBounds(
       width,
@@ -1272,6 +1257,7 @@ function saveTextMemory() {
       backgroundPaletteIndex: scene.ui.colorPanel.selectedPaletteIndex,
       backgroundFrameIndex: scene.session.backgroundFrameIndex,
       textureMixes: { ...scene.text.textureMixes },
+      textureShuffleSeed: scene.text.textureShuffleSeed,
       layerOrder: [...scene.text.layerOrder],
       editing: scene.text.edit,
       canvasWidth: width,
@@ -1314,6 +1300,9 @@ function loadTextMemory() {
       );
     }
     scene.text.textureMixes = Object.create(null);
+    scene.text.textureShuffleSeed = Number.isInteger(memory.textureShuffleSeed)
+      ? memory.textureShuffleSeed
+      : 1;
     if (memory.textureMixes != null && typeof memory.textureMixes == "object") {
       for (let [wordKey, mix] of Object.entries(memory.textureMixes)) {
         if (mix == null || typeof mix != "object") continue;
@@ -1436,14 +1425,10 @@ function clearTextMemory() {
   scene.text.sizes = Object.create(null);
   scene.text.sizeAnimations = Object.create(null);
   scene.text.textureMixes = Object.create(null);
+  scene.text.textureShuffleSeed = nextTextTextureShuffleSeed();
   scene.text.layerOrder = ["photo"];
   scene.ui.layerBar.selectedKey = null;
   scene.ui.layerBar.dragging = false;
-  scene.ui.texturePad.detent = 0;
-  scene.ui.texturePad.progress = 0;
-  scene.ui.texturePad.resize = 1;
-  scene.ui.texturePad.resizing = false;
-  scene.ui.texturePad.resizeMoved = false;
   scene.text.activeWord = -1;
   scene.text.pathEditArmed = false;
   clearTextSelectionOverride();
@@ -1466,6 +1451,7 @@ function editorHistorySnapshot() {
     colors: JSON.parse(JSON.stringify(scene.text.colors)),
     sizes: { ...scene.text.sizes },
     textureMixes: JSON.parse(JSON.stringify(scene.text.textureMixes)),
+    textureShuffleSeed: scene.text.textureShuffleSeed,
     layerOrder: [...scene.text.layerOrder],
     backgroundColor: { ...scene.session.backgroundColor },
     backgroundPaletteIndex: scene.ui.colorPanel.selectedPaletteIndex,
@@ -1534,6 +1520,12 @@ function restoreEditorHistorySnapshot(snapshot) {
       Object.create(null),
       JSON.parse(JSON.stringify(snapshot.textureMixes || {})),
     );
+    scene.text.textureShuffleSeed = Number.isInteger(
+      snapshot.textureShuffleSeed,
+    )
+      ? snapshot.textureShuffleSeed
+      : 1;
+    scene.text.glyphAssets.assignmentCache = Object.create(null);
     scene.text.layerOrder = [...(snapshot.layerOrder || [])];
     scene.session.backgroundColor = { ...snapshot.backgroundColor };
     scene.ui.colorPanel.selectedPaletteIndex =

@@ -72,7 +72,11 @@ function setup() {
       scene.workspace,
       scene.shader,
     ),
-    texturePanel: new GraphicalUserInterface("", scene.workspace, scene.shader),
+    texturePanel: new GraphicalUserInterface(
+      "REHUMANIZE",
+      scene.workspace,
+      scene.shader,
+    ),
     layerPanel: new GraphicalUserInterface("", scene.workspace, scene.shader),
     printTitle: new GraphicalUserInterface(
       "Card Preview",

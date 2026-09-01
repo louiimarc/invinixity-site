@@ -2,43 +2,17 @@ function texturePadLayout() {
   let state = scene.ui.texturePad;
   let scale = scene.ui.scale;
   let padding = scene.ui.button.padding * scale;
-  let panelPadding = 18 * scale;
-  let bottomPadding = panelPadding;
-  let headerHeight = 72 * scale;
-  let compact = width < 700 * scale;
-  let maximumPadWidth = width - padding * 2 - panelPadding * 2;
-  let maximumPadHeight =
-    height - padding * 2 - headerHeight - bottomPadding;
-  let availablePadSize = max(
-    64 * scale,
-    min(maximumPadWidth, maximumPadHeight),
-  );
-  let basePadSize = min(
-    280 * scale,
-    max(128 * scale, width * 0.3),
-    availablePadSize,
-  );
-  let middleReveal = constrain(state.progress, 0, 1);
-  state.resize = 1;
-  let padSize = basePadSize;
+  let buttonHeight = 72 * scale;
   if (state.titleWidthScale != scale) {
     push();
-    textFont(scene.font);
-    textSize(44 * scale);
-    state.titleWidth = textWidth("Options");
+    textFont(scene.text.font || scene.font);
+    textSize(buttonHeight / 1.25);
+    state.titleWidth = textWidth("REHUMANIZE");
     state.titleWidthScale = scale;
     pop();
   }
-  let compactPanelWidth = state.titleWidth + panelPadding * 2;
-  let expandedPanelWidth = padSize + panelPadding * 2;
-  let panelWidth = lerp(
-    compactPanelWidth,
-    expandedPanelWidth,
-    middleReveal,
-  );
-  let panelHeight =
-    headerHeight +
-    (padSize + bottomPadding) * middleReveal;
+  let panelWidth = max(220 * scale, state.titleWidth + buttonHeight);
+  let panelHeight = buttonHeight;
   let rightVisibleX = width / 2 - padding - panelWidth / 2;
   let leftVisibleX = -width / 2 + padding + panelWidth / 2;
   let rightHiddenX = width / 2 + padding + panelWidth / 2;
@@ -47,50 +21,18 @@ function texturePadLayout() {
   let visibleX = lerp(leftVisibleX, rightVisibleX, sideMix);
   let hiddenX = lerp(leftHiddenX, rightHiddenX, sideMix);
   let panelX = lerp(hiddenX, visibleX, state.position);
-  let visibleY = height < 800 * scale ? 70 * scale : 0;
-  let panelTop = visibleY - panelHeight / 2;
-  let panelBottom = visibleY + panelHeight / 2;
-  let panelLeft = panelX - panelWidth / 2;
-  let panelRight = panelX + panelWidth / 2;
-  let padY = panelTop + headerHeight + padSize / 2;
-  let panelRadius = scene.ui.button.radius * scale;
-  let padRadius = max(6 * scale, panelRadius - panelPadding);
-  let handleReach = panelRadius + 18 * scale;
+  let panelY = height < 800 * scale ? 70 * scale : 0;
   return {
     x: panelX,
-    y: visibleY,
+    y: panelY,
     size: panelWidth,
     panelWidth,
     panelHeight,
-    panelRadius,
-    panelPadding,
-    bottomPadding,
-    headerHeight,
-    pad: {
-      x: panelX,
-      y: padY,
-      size: padSize,
-      radius: padRadius,
-      padding: 24 * scale,
-    },
-    handle: {
-      x: lerp(panelRight, panelLeft, sideMix),
-      y: panelBottom,
-      w: handleReach * 1.6,
-      h: handleReach * 1.6,
-    },
-    middleReveal,
-    basePadSize,
-    compact,
+    panelRadius: scene.ui.button.radius * scale,
   };
 }
 
 function updateOptionsWorkspaceLayout() {
-  let state = scene.ui.texturePad;
-  if (!state.resizing) {
-    state.progress = animateData(state.progress, state.detent, 0.25);
-  }
-
   let nextWidth = texturePadLayout().panelWidth;
   let previousWidth = scene.composition.controlPanelWidth;
   if (!Number.isFinite(previousWidth)) {
@@ -123,212 +65,28 @@ function updateOptionsWorkspaceLayout() {
 }
 
 function texturePadTargetAtPointer() {
-  let bounds = scene.ui.texturePad.bounds;
-  if (!scene.text.edit || bounds == null) {
-    return null;
-  }
-  if (pointerInsideBounds(bounds.resize)) return "texturePadResize";
-  if (pointerInsideBounds(bounds.title)) return "texturePanelCycle";
-  if (
-    bounds.padVisible &&
-    scene.text.activeWord >= 0 &&
-    pointerInsideBounds(bounds.pad)
-  ) {
-    return "texturePad";
-  }
-  return pointerInsideBounds(bounds.panel) ? "texturePanel" : null;
-}
-
-function updateTexturePadFromPointer() {
-  let bounds = scene.ui.texturePad.bounds?.pad;
-  if (bounds == null || scene.text.activeWord < 0) return;
-  let pointerX = mouseX - width / 2;
-  let pointerY = mouseY - height / 2;
-  let x = constrain(
-    (pointerX - (bounds.x - bounds.w / 2)) / bounds.w,
-    0,
-    1,
-  );
-  let y = constrain(
-    (pointerY - (bounds.y - bounds.h / 2)) / bounds.h,
-    0,
-    1,
-  );
-  scene.ui.texturePad.previewMix = { x, y };
-  setTextureMixForSelectedWords(x, y);
-  prefetchTextGlyphsForCurrentWords();
-  inout.audio.ui?.xyPad("texturePad", x, y, mouseX / width);
+  let bounds = scene.ui.texturePad.bounds?.button;
+  if (!scene.text.edit || bounds == null) return null;
+  return pointerInsideBounds(bounds) ? "rehumanize" : null;
 }
 
 function beginTexturePadInteraction(target) {
-  if (target == "texturePadResize") {
-    let state = scene.ui.texturePad;
-    state.resizing = true;
-    state.resizeMoved = false;
-    state.resizeStartX = mouseX;
-    state.resizeStartY = mouseY;
-    state.resizeStartProgress = state.progress;
-    return true;
-  }
-  if (target == "texturePanelCycle") return true;
-  if (target == "texturePanel") return true;
-  if (target != "texturePad") return false;
-  scene.ui.texturePad.active = true;
-  updateTexturePadFromPointer();
-  return true;
+  return target == "rehumanize";
 }
 
 function updateTexturePadInteraction(target) {
-  if (target == "texturePadResize" && scene.ui.texturePad.resizing) {
-    let state = scene.ui.texturePad;
-    let layout = texturePadLayout();
-    let horizontalMovement = controlsOnRight()
-      ? state.resizeStartX - mouseX
-      : mouseX - state.resizeStartX;
-    let verticalMovement = mouseY - state.resizeStartY;
-    let movement = (horizontalMovement + verticalMovement) * 0.5;
-    state.resizeMoved = state.resizeMoved ||
-      abs(horizontalMovement) + abs(verticalMovement) > 6 * scene.ui.scale;
-    state.progress = constrain(
-      state.resizeStartProgress + movement / (layout.basePadSize * 0.4),
-      0,
-      1,
-    );
-    inout.audio.ui?.slide(
-      "texturePadResize",
-      state.progress,
-      mouseX / width,
-    );
-    return true;
-  }
-  if (target == "texturePanelCycle") return true;
-  if (target != "texturePad" || !scene.ui.texturePad.active) return false;
-  updateTexturePadFromPointer();
-  return true;
+  return target == "rehumanize";
 }
 
 function endTexturePadInteraction(target) {
-  if (target == "texturePadResize") {
-    let state = scene.ui.texturePad;
-    let previousDetent = state.detent;
-    state.detent = state.resizeMoved
-      ? round(state.progress)
-      : (state.detent + 1) % 2;
-    state.resizing = false;
-    inout.audio.ui?.panelSnap(
-      previousDetent,
-      state.detent,
-      mouseX / width,
-    );
-    return true;
-  }
-  if (target == "texturePanelCycle") {
-    let state = scene.ui.texturePad;
-    if (
-      state.bounds != null &&
-      pointerInsideBounds(state.bounds.title)
-    ) {
-      let previousDetent = state.detent;
-      state.detent = (state.detent + 1) % 2;
-      inout.audio.ui?.panelSnap(
-        previousDetent,
-        state.detent,
-        mouseX / width,
-      );
+  if (target != "rehumanize") return false;
+  let bounds = scene.ui.texturePad.bounds?.button;
+  if (bounds != null && pointerInsideBounds(bounds)) {
+    if (rehumanizeNameTextures()) {
+      inout.audio.ui?.tap("rehumanize", mouseX / width);
     }
-    return true;
   }
-  if (target == "texturePanel") return true;
-  if (target != "texturePad") return false;
-  scene.ui.texturePad.active = false;
-  scene.ui.texturePad.previewMix = null;
-  saveTextMemory();
-  recordEditorHistory();
   return true;
-}
-
-function drawTexturePadDots(layout, mix, opacity) {
-  let columns = 9;
-  let rows = 9;
-  let innerSize = layout.pad.size - layout.pad.padding * 2;
-  let points = [];
-  let minimumDistance = Infinity;
-  for (let column = 0; column < columns; column++) {
-    for (let row = 0; row < rows; row++) {
-      let x = column / (columns - 1);
-      let y = row / (rows - 1);
-      let distance = sqrt(
-        (x - mix.x) * (x - mix.x) +
-        (y - mix.y) * (y - mix.y),
-      );
-      points.push({ x, y, distance });
-      minimumDistance = min(minimumDistance, distance);
-    }
-  }
-
-  push();
-  resetShader();
-  translate(0, 0, 32);
-  noStroke();
-  fill(255, 220 * opacity);
-  let baseDiameter = 6 * scene.ui.scale;
-  for (let i = 0; i < points.length; i++) {
-    let point = points[i];
-    let adjustedDistance = max(0, point.distance - minimumDistance);
-    let influence = pow(1 - constrain(adjustedDistance / 0.35, 0, 1), 2);
-    let targetScale = 1 + influence * 2;
-    let currentScale = scene.ui.texturePad.dotScales[i] ?? 1;
-    currentScale = animateData(currentScale, targetScale, 0.4);
-    scene.ui.texturePad.dotScales[i] = currentScale;
-    let diameter = baseDiameter * currentScale;
-    circle(
-      layout.x - innerSize / 2 + point.x * innerSize,
-      layout.pad.y - innerSize / 2 + point.y * innerSize,
-      diameter,
-    );
-  }
-  pop();
-}
-
-function drawTexturePadPanelDetails(layout, opacity) {
-  let scale = scene.ui.scale;
-  let panelTop = layout.y - layout.panelHeight / 2;
-  let panelBottom = layout.y + layout.panelHeight / 2;
-  let panelLeft = layout.x - layout.panelWidth / 2;
-  let panelRight = layout.x + layout.panelWidth / 2;
-
-  push();
-  resetShader();
-  translate(0, 0, 32);
-  noStroke();
-  fill(255, 255 * opacity);
-  textFont(scene.font);
-  let sideMix = controlSideMix();
-  textAlign(sideMix < 0.5 ? LEFT : RIGHT, CENTER);
-  textSize(44 * scale);
-  text(
-    "Options",
-    lerp(panelLeft + layout.panelPadding, panelRight - layout.panelPadding, sideMix),
-    panelTop + layout.headerHeight * 0.5 - 6 * scale,
-  );
-
-  noFill();
-  stroke(255, 220 * opacity);
-  strokeWeight(5 * scale);
-  strokeCap(ROUND);
-  let handleRadius = layout.panelRadius;
-  let handleOffset = 9 * scale;
-  arc(
-    controlsOnRight()
-      ? panelLeft + layout.panelRadius - handleOffset
-      : panelRight - layout.panelRadius + handleOffset,
-    panelBottom - layout.panelRadius + handleOffset,
-    handleRadius * 2,
-    handleRadius * 2,
-    controlsOnRight() ? 90 : 0,
-    controlsOnRight() ? 180 : 90,
-  );
-  pop();
 }
 
 function drawTexturePad() {
@@ -338,60 +96,28 @@ function drawTexturePad() {
   state.position = animateData(state.position, visible ? 1 : 0, 0.25);
   if (!visible && state.position < 0.001) {
     state.bounds = null;
+    scene.gui.texturePanel.bounds = null;
     return;
   }
 
   let layout = texturePadLayout();
-  state.bounds = {
-    panel: {
-      x: layout.x,
-      y: layout.y,
-      w: layout.panelWidth,
-      h: layout.panelHeight,
-    },
-    title: {
-      x: layout.x,
-      y:
-        layout.y - layout.panelHeight / 2 +
-        layout.headerHeight / 2,
-      w: layout.panelWidth,
-      h: layout.headerHeight,
-    },
-    pad: {
-      x: layout.pad.x,
-      y: layout.pad.y,
-      w: layout.pad.size,
-      h: layout.pad.size,
-    },
-    resize: layout.handle,
-    padVisible: layout.middleReveal >= 0.99,
-  };
-  let opacity = constrain(state.position, 0, 1);
+  scene.gui.texturePanel.label = "REHUMANIZE";
+  scene.gui.texturePanel.armed =
+    scene.ui.pointer.pressTarget == "rehumanize";
   scene.gui.texturePanel.update(
     scene.elapsedTime,
     uiPointer(),
     uiPointerActive(),
   );
-  let panelTop = layout.y - layout.panelHeight / 2;
-  scene.gui.texturePanel.gradientPanel(
+  scene.gui.texturePanel.button(
     layout.x,
     layout.y,
     layout.panelWidth,
     layout.panelHeight,
     layout.panelRadius,
-    [0.5, (layout.pad.y - panelTop) / layout.panelHeight],
-    [
-      layout.pad.size / layout.panelWidth,
-      layout.pad.size / layout.panelHeight,
-    ],
-    layout.pad.radius / (layout.pad.size * 0.5),
   );
-  drawTexturePadPanelDetails(layout, opacity);
-  let contentClip = beginColorPanelClip(state.bounds.panel);
-  drawTexturePadDots(
-    layout,
-    state.previewMix || textureMixForWordIndex(scene.text.activeWord),
-    opacity * layout.middleReveal,
-  );
-  endColorPanelClip(contentClip);
+  state.bounds = {
+    panel: { ...scene.gui.texturePanel.bounds },
+    button: { ...scene.gui.texturePanel.bounds },
+  };
 }

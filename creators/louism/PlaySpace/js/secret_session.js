@@ -357,6 +357,8 @@ function applySecretDemoRecipe(recipe, photo) {
   scene.text.paths = Object.create(null);
   scene.text.sizes = Object.create(null);
   scene.text.textureMixes = Object.create(null);
+  scene.text.textureShuffleSeed = cleaned.textureShuffleSeed;
+  scene.text.glyphAssets.assignmentCache = Object.create(null);
   for (let word of cleaned.words) {
     scene.text.paths[word.key] = word.path.map((point) =>
       denormalizeSecretDemoPoint(point, bounds)

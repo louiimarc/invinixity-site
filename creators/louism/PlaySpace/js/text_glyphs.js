@@ -114,64 +114,85 @@ function preloadAllTextGlyphImages() {
   for (let index = 0; index < workerCount; index++) runNext();
 }
 
-function textGlyphGroupWeights(mix) {
-  let x = constrain(mix?.x ?? 0.5, 0, 1);
-  let y = constrain(mix?.y ?? 0.5, 0, 1);
-  return [
-    { group: "Airbrush", weight: (1 - x) * (1 - y) },
-    { group: "Pastel", weight: x * (1 - y) },
-    { group: "Collage", weight: (1 - x) * y },
-    { group: "Marker", weight: x * y },
-  ];
-}
-
 function textGlyphRandom(seed, offset) {
   let value = Math.sin(seed * 0.0173 + offset * 83.127) * 43758.5453;
   return value - Math.floor(value);
 }
 
-function textGlyphGroupsForWord(wordSeed, characterCount, mix) {
+function nextTextTextureShuffleSeed() {
+  if (globalThis.crypto?.getRandomValues != null) {
+    let values = new Uint32Array(1);
+    globalThis.crypto.getRandomValues(values);
+    return values[0] & 0x7fffffff;
+  }
+  return Math.floor(
+    (Date.now() + Math.random() * 0x7fffffff) % 0x7fffffff,
+  );
+}
+
+function balancedTextGlyphGroups() {
   let cache = scene.text.glyphAssets.assignmentCache;
-  let cacheKey = [
-    characterCount,
-    (mix?.x ?? 0.5).toFixed(4),
-    (mix?.y ?? 0.5).toFixed(4),
-  ].join(":");
-  if (cache[wordSeed]?.key == cacheKey) return cache[wordSeed].groups;
+  let words = textWords();
+  let shuffleSeed = scene.text.textureShuffleSeed || 1;
+  let cacheKey = `${shuffleSeed}:${words.join("\u0000")}`;
+  if (cache.balancedName?.key == cacheKey) {
+    return cache.balancedName.groupsByWord;
+  }
 
-  let options = textGlyphGroupWeights(mix).map((option, index) => {
-    let exactCount = option.weight * characterCount;
-    return {
-      ...option,
-      index,
-      count: floor(exactCount),
-      remainder: exactCount - floor(exactCount),
-      tieBreaker: textGlyphRandom(wordSeed, index + 11),
-    };
-  });
-  let assigned = options.reduce((sum, option) => sum + option.count, 0);
-  let remaining = characterCount - assigned;
-  let remainderOrder = [...options].sort((a, b) => {
-    if (abs(a.remainder - b.remainder) > 0.000001) {
-      return b.remainder - a.remainder;
+  let groupNames = ["Airbrush", "Pastel", "Collage", "Marker"];
+  let groupsByWord = words.map((word) => Array(word.length).fill("Marker"));
+  let positions = [];
+  for (let wordIndex = 0; wordIndex < words.length; wordIndex++) {
+    for (
+      let characterIndex = 0;
+      characterIndex < words[wordIndex].length;
+      characterIndex++
+    ) {
+      positions.push({
+        wordIndex,
+        characterIndex,
+        character: words[wordIndex][characterIndex].toUpperCase(),
+      });
     }
-    return b.tieBreaker - a.tieBreaker;
-  });
-
-  for (let i = 0; i < remaining; i++) {
-    remainderOrder[i % remainderOrder.length].count++;
+  }
+  for (let index = positions.length - 1; index > 0; index--) {
+    let randomIndex = floor(
+      textGlyphRandom(shuffleSeed, index + 101) * (index + 1),
+    );
+    [positions[index], positions[randomIndex]] = [
+      positions[randomIndex],
+      positions[index],
+    ];
   }
 
-  let groups = [];
-  for (let option of options) {
-    for (let i = 0; i < option.count; i++) groups.push(option.group);
+  let counts = Object.fromEntries(groupNames.map((group) => [group, 0]));
+  for (let [positionIndex, position] of positions.entries()) {
+    let availableGroups = groupNames.filter((group) =>
+      (scene.text.glyphAssets.byGroup[group]?.[position.character]?.length || 0) > 0
+    );
+    if (availableGroups.length == 0) availableGroups = [...groupNames];
+    let minimumCount = min(...availableGroups.map((group) => counts[group]));
+    let leastUsedGroups = availableGroups.filter(
+      (group) => counts[group] == minimumCount,
+    );
+    let groupIndex = floor(
+      textGlyphRandom(shuffleSeed, positionIndex + 401) * leastUsedGroups.length,
+    );
+    let group = leastUsedGroups[min(groupIndex, leastUsedGroups.length - 1)];
+    groupsByWord[position.wordIndex][position.characterIndex] = group;
+    counts[group]++;
   }
-  for (let i = groups.length - 1; i > 0; i--) {
-    let randomIndex = floor(textGlyphRandom(wordSeed, i + 101) * (i + 1));
-    [groups[i], groups[randomIndex]] = [groups[randomIndex], groups[i]];
-  }
-  cache[wordSeed] = { key: cacheKey, groups };
-  return groups;
+
+  cache.balancedName = { key: cacheKey, groupsByWord };
+  return groupsByWord;
+}
+
+function textGlyphGroupsForWord(wordSeed, characterCount, mix) {
+  let groups = balancedTextGlyphGroups()[wordSeed - 1] || [];
+  return Array.from(
+    { length: characterCount },
+    (_, index) => groups[index] || "Marker",
+  );
 }
 
 function textGlyphEntryFor(char, seed, group) {
@@ -184,17 +205,13 @@ function textGlyphEntryFor(char, seed, group) {
   }
   if (candidates == null || candidates.length == 0) return null;
 
-  let index = floor(textGlyphRandom(seed, 2) * candidates.length);
+  let shuffleSeed = scene.text.textureShuffleSeed || 1;
+  let variantSeed = seed + (shuffleSeed % 1000000) * 4099;
+  let index = floor(textGlyphRandom(variantSeed, 2) * candidates.length);
   return candidates[min(index, candidates.length - 1)];
 }
 
-function drawTextGlyphImage(
-  gfx,
-  char,
-  size,
-  seed,
-  group,
-) {
+function drawTextGlyphImage(gfx, char, size, seed, group) {
   if (char.trim() == "") return;
   let entry = textGlyphEntryFor(char, seed, group);
 
@@ -233,4 +250,15 @@ function prefetchTextGlyphsForCurrentWords() {
       ));
     }
   }
+}
+
+function rehumanizeNameTextures() {
+  if (textWords().length == 0) return false;
+  scene.text.textureShuffleSeed = nextTextTextureShuffleSeed();
+  scene.text.glyphAssets.assignmentCache = Object.create(null);
+  prefetchTextGlyphsForCurrentWords();
+  saveTextMemory();
+  scheduleSessionCacheSave();
+  recordEditorHistory();
+  return true;
 }
