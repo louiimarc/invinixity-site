@@ -90,7 +90,7 @@ function endTexturePadInteraction(target) {
 }
 
 function drawTexturePad() {
-  let spinProgress = updateRehumanizeTextureSpin();
+  updateRehumanizeTextureSpin();
   let visible =
     scene.session.mode == "active" && scene.text.edit && data.loading.ready;
   let state = scene.ui.texturePad;
@@ -103,38 +103,8 @@ function drawTexturePad() {
 
   let layout = texturePadLayout();
   scene.gui.texturePanel.label = "REHUMANIZE";
-  if (state.spinning) {
-    let settleEnergy = pow(1 - spinProgress, 1.35);
-    let spinAngle = (1 - pow(1 - spinProgress, 3)) * 1080;
-    scene.gui.texturePanel.labelOpacity = Array.from(
-      scene.gui.texturePanel.label,
-      () => 255,
-    );
-    scene.gui.texturePanel.labelScales = Array.from(
-      scene.gui.texturePanel.label,
-      (_, index) =>
-        1 + abs(sin(spinAngle + index * 24)) * 0.14 * settleEnergy,
-    );
-    scene.gui.texturePanel.labelRotations = Array.from(
-      scene.gui.texturePanel.label,
-      (_, index) =>
-        sin(spinAngle + index * 24 + 90) * 16 * settleEnergy,
-    );
-    scene.gui.texturePanel.labelOffsets = Array.from(
-      scene.gui.texturePanel.label,
-      (_, index) => ({
-        x: 0,
-        y: sin(spinAngle + index * 24) * 0.28 * settleEnergy,
-      }),
-    );
-  } else {
-    scene.gui.texturePanel.labelOpacity = null;
-    scene.gui.texturePanel.labelScales = null;
-    scene.gui.texturePanel.labelRotations = null;
-    scene.gui.texturePanel.labelOffsets = null;
-  }
   scene.gui.texturePanel.armed =
-    scene.ui.pointer.pressTarget == "rehumanize" || state.spinning;
+    scene.ui.pointer.pressTarget == "rehumanize";
   scene.gui.texturePanel.update(
     scene.elapsedTime,
     uiPointer(),
