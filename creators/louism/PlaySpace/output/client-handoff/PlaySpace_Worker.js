@@ -3,10 +3,10 @@ const EXPIRY_MILLISECONDS = 24 * 60 * 60 * 1000;
 const MAXIMUM_HOME_EXAMPLES = 50;
 const MAXIMUM_HOME_EXCLUSIONS = 1000;
 const HOME_EXCLUSIONS_KEY = "moderation/home-exclusions.json";
-const ALLOWED_ORIGINS = new Set([
-  "https://invinixity.com",
-  "https://www.invinixity.com",
-]);
+// The event kiosk runs on localhost or a Bonjour .local hostname, both of
+// which are accepted by isDevelopmentOrigin(). Add a public web kiosk origin
+// here only if IdeaFest later chooses to host the creative interface online.
+const ALLOWED_ORIGINS = new Set([]);
 
 function requestOrigin(request) {
   return request.headers.get("Origin") || "";

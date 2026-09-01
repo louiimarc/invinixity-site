@@ -2,3 +2,5 @@
 .playspace-downloads/
 node_modules/
 npm-debug.log*
+output/kiosk-runtime/
+tmp/

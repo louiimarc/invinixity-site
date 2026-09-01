@@ -7,6 +7,7 @@ function preload() {
   preloadFrameOverlayAssets();
   preloadSecretSessionNames();
   preloadHomeGalleryAssets();
+  preloadCameraFaceGuideAssets();
   loadStrings(
     scene.session.camera.captureLabelPath,
     (lines) => {
@@ -59,6 +60,7 @@ function setup() {
   preloadAllTextGlyphImages();
   preloadSecretSessionFaces();
   setupHomeGallery();
+  setupCameraFaceGuideOverlay();
   restoreDownloadHandoff();
 
   scene.gui = {

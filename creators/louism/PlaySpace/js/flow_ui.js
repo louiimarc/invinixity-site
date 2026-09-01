@@ -55,6 +55,7 @@ scene.flowUi = {
 
 scene.ui.backgroundPicker = {
   open: false,
+  finalizing: false,
   capturePending: false,
   selectedIndex: 0,
   itemBounds: [],
@@ -385,7 +386,18 @@ function captureBackgroundPickerCard() {
 
 function openBackgroundFramePicker() {
   let state = scene.ui.backgroundPicker;
+  if (
+    scene.session.mode != "active" ||
+    state.open ||
+    state.finalizing ||
+    scene.ui.printPreview.pending ||
+    scene.ui.printPreview.open ||
+    (typeof downloadHandoff != "undefined" &&
+      downloadHandoff.stage != "closed")
+  ) return false;
+
   state.open = true;
+  state.finalizing = false;
   let paletteIndex = scene.ui.colorPanel.selectedPaletteIndex ??
     frameOverlayPaletteIndex();
   state.selectedIndex = Number.isInteger(scene.session.backgroundFrameIndex)
@@ -396,24 +408,48 @@ function openBackgroundFramePicker() {
   state.drag.active = false;
   state.drag.moved = false;
   state.drag.velocity = 0;
+  state.cardSnapshot = null;
   state.capturePending = true;
+  scene.ui.pointer.pressTarget = null;
+  scene.ui.pointer.pressStartedOnButton = false;
+  return true;
+}
+
+function closeBackgroundFramePicker(cancelFinalization = true) {
+  let state = scene.ui.backgroundPicker;
+  state.open = false;
+  state.drag.active = false;
+  state.drag.moved = false;
+  state.drag.velocity = 0;
+  state.capturePending = false;
+  state.itemBounds = [];
+  if (cancelFinalization) state.finalizing = false;
+  scene.gui.backgroundCancel.bounds = null;
+  scene.gui.backgroundNext.bounds = null;
   scene.ui.pointer.pressTarget = null;
   scene.ui.pointer.pressStartedOnButton = false;
 }
 
-function closeBackgroundFramePicker() {
-  let state = scene.ui.backgroundPicker;
-  state.open = false;
-  state.drag.active = false;
-  scene.gui.backgroundCancel.bounds = null;
-  scene.gui.backgroundNext.bounds = null;
-}
-
 function confirmBackgroundFramePicker() {
-  scene.session.backgroundFrameIndex = scene.ui.backgroundPicker.selectedIndex;
+  let state = scene.ui.backgroundPicker;
+  if (
+    !state.open ||
+    state.finalizing ||
+    scene.session.mode != "active" ||
+    scene.ui.printPreview.pending ||
+    scene.ui.printPreview.open
+  ) return false;
+
+  state.finalizing = true;
+  scene.session.photoFrame.timeoutHandled = true;
+  scene.session.backgroundFrameIndex = state.selectedIndex;
   saveTextMemory();
-  closeBackgroundFramePicker();
-  requestPrintPreview(true);
+  closeBackgroundFramePicker(false);
+  if (!requestPrintPreview(true)) {
+    state.finalizing = false;
+    return false;
+  }
+  return true;
 }
 
 function backgroundFramePickerTargetAtPointer() {

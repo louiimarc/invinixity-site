@@ -127,6 +127,17 @@ function updateSessionCreationTimeout() {
   ) return;
 
   frame.timeoutHandled = true;
+  if (
+    scene.ui.printPreview.pending ||
+    scene.ui.printPreview.open ||
+    scene.ui.backgroundPicker.finalizing ||
+    (typeof downloadHandoff != "undefined" &&
+      downloadHandoff.stage != "closed")
+  ) return;
+  if (scene.ui.backgroundPicker.open) {
+    confirmBackgroundFramePicker();
+    return;
+  }
   if (scene.session.mode == "active") {
     setTextEdit(false);
     openBackgroundFramePicker();

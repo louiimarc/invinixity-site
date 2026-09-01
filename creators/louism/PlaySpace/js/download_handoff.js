@@ -10,6 +10,7 @@ var downloadHandoff = {
   backgroundFrameIndex: 0,
   scanExpiresAt: 0,
   countdownTimer: null,
+  requestId: 0,
   rotation: {
     angle: 0,
     velocity: 0,
@@ -326,6 +327,11 @@ function cardPreviewPosterBlob(snapshot) {
 }
 
 async function beginDownloadHandoff(posterSnapshot) {
+  if (posterSnapshot == null) {
+    console.error("Refused to begin a download without a finished poster.");
+    return;
+  }
+  let requestId = ++downloadHandoff.requestId;
   setupDownloadHandoff();
   downloadHandoff.posterSnapshot = posterSnapshot;
   downloadHandoff.posterImageUrl = posterSnapshot?.canvas?.toDataURL(
@@ -352,6 +358,7 @@ async function beginDownloadHandoff(posterSnapshot) {
     let configResponse = await fetch(playSpaceApiUrl("/api/config"), {
       cache: "no-store",
     });
+    if (requestId != downloadHandoff.requestId) return;
     let posterBlob = cardPreviewPosterBlob(posterSnapshot);
     if (!configResponse.ok) throw new Error("Download service unavailable");
     downloadHandoff.config = await configResponse.json();
@@ -361,6 +368,7 @@ async function beginDownloadHandoff(posterSnapshot) {
       headers: { "Content-Type": "image/png" },
       body: posterBlob,
     });
+    if (requestId != downloadHandoff.requestId) return;
     if (!posterResponse.ok) throw new Error("Unable to save poster");
     let session = await posterResponse.json();
     if (session.exampleUrl == null) {
@@ -369,6 +377,7 @@ async function beginDownloadHandoff(posterSnapshot) {
         headers: { "Content-Type": "image/png" },
         body: posterBlob,
       });
+      if (requestId != downloadHandoff.requestId) return;
       if (!exampleResponse.ok) {
         throw new Error("Unable to save poster example");
       }
@@ -386,6 +395,7 @@ async function beginDownloadHandoff(posterSnapshot) {
     if (downloadHandoff.config.skipWifi) showPosterDownloadStep();
     else showWifiJoinStep();
   } catch (error) {
+    if (requestId != downloadHandoff.requestId) return;
     console.error("Unable to prepare local poster download", error);
     showDownloadHandoffError(error);
   }
@@ -506,6 +516,7 @@ function showDownloadHandoffError(error) {
 }
 
 function closeDownloadHandoff() {
+  downloadHandoff.requestId++;
   stopDownloadScanCountdown();
   downloadHandoff.stage = "closed";
   downloadHandoff.downloadUrl = "";

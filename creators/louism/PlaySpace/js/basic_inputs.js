@@ -1,6 +1,16 @@
 function keyPressed(event) {
   userStartAudio();
 
+  if (key === "∑") {
+    if (!event?.repeat) toggleHomeGalleryModeration();
+    return false;
+  }
+
+  if (scene.homeGallery.moderation.open) {
+    if (keyCode === ESCAPE) closeHomeGalleryModeration(false);
+    return false;
+  }
+
   if (key === "π") {
     if (!event?.repeat) toggleSecretSessionMode();
     return false;
@@ -129,6 +139,11 @@ function uiButtonAtPointer() {
     }
     return "cameraPrompt";
   }
+
+  if (
+    scene.ui.printPreview.pending ||
+    scene.ui.backgroundPicker.finalizing
+  ) return "flowTransition";
 
   if (scene.ui.backgroundPicker.open) {
     return backgroundFramePickerTargetAtPointer();

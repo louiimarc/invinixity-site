@@ -1,6 +1,43 @@
 function requestPrintPreview(autoDownload = false) {
-  scene.ui.printPreview.pending = true;
-  scene.ui.printPreview.autoDownload = autoDownload;
+  let state = scene.ui.printPreview;
+  if (
+    state.pending ||
+    state.open ||
+    scene.session.mode != "active" ||
+    scene.ui.backgroundPicker.open
+  ) return false;
+
+  state.pending = true;
+  state.autoDownload = autoDownload;
+  state.sessionGeneration = scene.session.generation;
+  return true;
+}
+
+function resetPrintPreviewState() {
+  let state = scene.ui.printPreview;
+  state.pending = false;
+  state.autoDownload = false;
+  state.sessionGeneration = null;
+  state.open = false;
+  state.transition = 0;
+  state.transitionTarget = 0;
+  state.closing = false;
+  state.completeSession = false;
+  state.saveAsExample = false;
+  state.snapshot = null;
+  state.posterSnapshot = null;
+  state.layers = [];
+  state.introSpin.active = false;
+  state.drag.active = false;
+  state.snap.active = false;
+}
+
+function rejectPrintPreviewCapture(message) {
+  console.warn(message);
+  scene.ui.printPreview.pending = false;
+  scene.ui.printPreview.autoDownload = false;
+  scene.ui.printPreview.sessionGeneration = null;
+  scene.ui.backgroundPicker.finalizing = false;
 }
 
 function cardPreviewSnapshot(image, fullResolution = false) {
@@ -123,9 +160,30 @@ function capturePrintPreview(liveBaseSnapshot) {
   let state = scene.ui.printPreview;
   if (!state.pending) return;
 
-  captureCardPreviewLayers(liveBaseSnapshot);
+  if (
+    state.sessionGeneration != scene.session.generation ||
+    scene.session.mode != "active" ||
+    scene.ui.backgroundPicker.open ||
+    !scene.ui.backgroundPicker.finalizing ||
+    liveBaseSnapshot == null
+  ) {
+    rejectPrintPreviewCapture(
+      "Cancelled a stale PlaySpace poster capture before it could include another scene.",
+    );
+    return;
+  }
+
+  try {
+    captureCardPreviewLayers(liveBaseSnapshot);
+  } catch (error) {
+    rejectPrintPreviewCapture("Unable to capture the final PlaySpace poster.");
+    console.error(error);
+    return;
+  }
   state.pending = false;
+  state.sessionGeneration = null;
   if (state.autoDownload) {
+    let captureGeneration = scene.session.generation;
     state.autoDownload = false;
     state.open = false;
     state.transition = 0;
@@ -134,18 +192,26 @@ function capturePrintPreview(liveBaseSnapshot) {
     captureCurrentCreationRecipe();
     if (saveAsExample) {
       saveSpecialSessionExample(state.posterSnapshot)
-        .then(() => finishPlaySession())
+        .then(() => {
+          if (captureGeneration != scene.session.generation) return;
+          scene.ui.backgroundPicker.finalizing = false;
+          finishPlaySession();
+        })
         .catch((error) => {
+          if (captureGeneration != scene.session.generation) return;
           console.error("Unable to save PlaySpace example", error);
+          scene.ui.backgroundPicker.finalizing = false;
           scene.secretSession.recording = true;
           scene.session.mode = "active";
           setTextEdit(false);
         });
     } else {
       beginDownloadHandoff(state.posterSnapshot);
+      scene.ui.backgroundPicker.finalizing = false;
     }
     return;
   }
+  scene.ui.backgroundPicker.finalizing = false;
   state.open = true;
   state.transition = 0;
   state.transitionTarget = 1;

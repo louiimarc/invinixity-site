@@ -61,6 +61,29 @@ canvas {
     -webkit-user-select: none;
 }
 
+.camera-face-guide {
+    position: fixed;
+    z-index: 2;
+    overflow: hidden;
+    pointer-events: none;
+    visibility: hidden;
+    opacity: 0;
+    transform: translateZ(0);
+}
+
+.camera-face-guide__image {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    display: block;
+    width: 88%;
+    height: 92%;
+    object-fit: contain;
+    transform: translate(-50%, -50%);
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
 #text-input {
     position: fixed;
     left: 0;
@@ -79,6 +102,156 @@ canvas {
     pointer-events: none;
     user-select: text;
     -webkit-user-select: text;
+}
+
+.home-moderation {
+    position: fixed;
+    z-index: 1100;
+    inset: 0;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: 18px;
+    padding: calc(var(--playspace-safe-top) + 26px) 30px
+        calc(var(--playspace-safe-bottom) + 24px);
+    overflow: hidden;
+    background-color: #f8dce5;
+    background-image: var(--playspace-gradient);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    color: #1d1d1d;
+    font-family: ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.home-moderation header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+}
+
+.home-moderation h1,
+.home-moderation p {
+    margin: 0;
+}
+
+.home-moderation h1 {
+    font-size: clamp(28px, 4vw, 52px);
+    line-height: 1;
+}
+
+.home-moderation header p {
+    margin-top: 8px;
+    color: rgba(29, 29, 29, 0.7);
+    font-size: clamp(14px, 1.7vw, 21px);
+}
+
+.home-moderation button {
+    border: 0;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    touch-action: manipulation;
+}
+
+.home-moderation__cancel,
+.home-moderation__done {
+    border-radius: 999px;
+    padding: 14px 28px;
+    background: rgba(255, 255, 255, 0.54);
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.75),
+        0 10px 30px rgba(77, 20, 48, 0.12);
+    font-size: clamp(18px, 2.1vw, 28px);
+    font-weight: 800;
+}
+
+.home-moderation__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(122px, 1fr));
+    align-content: start;
+    gap: 18px;
+    min-height: 0;
+    padding: 7px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
+}
+
+.home-moderation__card {
+    position: relative;
+    min-width: 0;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.4);
+    box-shadow: 0 9px 24px rgba(77, 20, 48, 0.16);
+    transition: transform 150ms ease;
+}
+
+.home-moderation__card img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 9 / 16;
+    object-fit: cover;
+    transition: opacity 150ms ease, filter 150ms ease;
+}
+
+.home-moderation__card span {
+    position: absolute;
+    right: 9px;
+    bottom: 9px;
+    padding: 7px 10px;
+    border-radius: 999px;
+    background: #f00082;
+    color: white;
+    font-size: 13px;
+    font-weight: 900;
+    opacity: 0;
+}
+
+.home-moderation__card[aria-pressed="true"] {
+    transform: scale(0.96);
+    box-shadow: 0 0 0 5px #4d1430;
+}
+
+.home-moderation__card[aria-pressed="true"] img {
+    opacity: 0.3;
+    filter: grayscale(0.65);
+}
+
+.home-moderation__card[aria-pressed="true"] span {
+    opacity: 1;
+}
+
+.home-moderation__done {
+    justify-self: center;
+    min-width: min(280px, 70vw);
+    background: #7bcbbb;
+}
+
+.home-moderation__empty {
+    grid-column: 1 / -1;
+    place-self: center;
+    font-size: clamp(20px, 3vw, 34px);
+    font-weight: 700;
+}
+
+@media (orientation: portrait) {
+    .home-moderation {
+        padding-right: 22px;
+        padding-left: 22px;
+    }
+
+    .home-moderation__grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+    }
 }
 
 #download-handoff[hidden] {

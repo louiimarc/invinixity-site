@@ -19,6 +19,9 @@ function openSessionCameraPrompt() {
   if (!data.loading.ready || sessionCameraPromptOpen()) return;
 
   let prompt = scene.session.cameraPrompt;
+  scene.session.generation++;
+  closeBackgroundFramePicker();
+  resetPrintPreviewState();
   if (!scene.text.hasSavedSession) clearTextMemory();
   resetSessionPhotoFrame();
   resetSessionBackgroundColor(true);
@@ -220,6 +223,7 @@ function stopSessionCamera(cancelRequest = true) {
   if (["live", "requesting", "captured"].includes(camera.status)) {
     camera.status = "idle";
   }
+  hideCameraFaceGuideOverlay();
 }
 
 function sessionCameraLayout() {
@@ -455,6 +459,11 @@ function updateSessionPhotoCountdown() {
 
 function finishPlaySession() {
   cancelSecretSessionLoad();
+  scene.session.generation++;
+  closeBackgroundFramePicker();
+  resetPrintPreviewState();
+  scene.ui.pointer.pressTarget = null;
+  scene.ui.pointer.pressStartedOnButton = false;
   setTextEdit(false);
   clearTextMemory();
   discardSessionCache();
@@ -484,6 +493,171 @@ function drawCameraStatus(layout, transition) {
   textAlign(CENTER, CENTER);
   textSize(22 * scene.ui.scale);
   text(message, 0, layout.previewY);
+}
+
+function updateCameraFaceGuideLuminance(preview) {
+  let camera = scene.session.camera;
+  if (camera.status != "live" || preview == null) return;
+
+  let now = millis();
+  if (now - camera.faceGuideLuminanceUpdatedAt < 220) return;
+  camera.faceGuideLuminanceUpdatedAt = now;
+
+  let analysisWidth = 24;
+  let analysisHeight = 18;
+  if (camera.faceGuideAnalysisBuffer == null) {
+    camera.faceGuideAnalysisBuffer = createGraphics(
+      analysisWidth,
+      analysisHeight,
+    );
+    camera.faceGuideAnalysisBuffer.pixelDensity(1);
+  }
+
+  let analysis = camera.faceGuideAnalysisBuffer;
+  let context = analysis.drawingContext;
+  context.clearRect(0, 0, analysisWidth, analysisHeight);
+  context.drawImage(
+    preview.canvas,
+    0,
+    0,
+    preview.width,
+    preview.height,
+    0,
+    0,
+    analysisWidth,
+    analysisHeight,
+  );
+  analysis.loadPixels();
+
+  let total = 0;
+  let count = 0;
+  for (let index = 0; index < analysis.pixels.length; index += 4) {
+    if (analysis.pixels[index + 3] == 0) continue;
+    total +=
+      analysis.pixels[index] * 0.2126 +
+      analysis.pixels[index + 1] * 0.7152 +
+      analysis.pixels[index + 2] * 0.0722;
+    count++;
+  }
+  if (count == 0) return;
+
+  camera.faceGuideLuminance = total / (count * 255);
+  if (camera.faceGuideLuminance >= 0.54) {
+    camera.faceGuideDarkTarget = 1;
+  } else if (camera.faceGuideLuminance <= 0.46) {
+    camera.faceGuideDarkTarget = 0;
+  }
+}
+
+function preloadCameraFaceGuideAssets() {
+  let camera = scene.session.camera;
+  let guides = [
+    ["faceGuideDarkElement", camera.faceGuideDarkPath, "dark"],
+    ["faceGuideLightElement", camera.faceGuideLightPath, "light"],
+  ];
+  data.amount += guides.length;
+
+  for (let [property, path, label] of guides) {
+    let element = document.createElement("img");
+    element.alt = "";
+    element.decoding = "async";
+    element.draggable = false;
+    element.addEventListener("load", loaded, { once: true });
+    element.addEventListener(
+      "error",
+      (error) => {
+        console.warn(`Unable to load ${label} camera face guide`, error);
+        loaded();
+      },
+      { once: true },
+    );
+    element.src = path;
+    camera[property] = element;
+  }
+}
+
+function setupCameraFaceGuideOverlay() {
+  let camera = scene.session.camera;
+  let existing = document.getElementById("camera-face-guide");
+  if (existing != null) existing.remove();
+
+  let overlay = document.createElement("div");
+  overlay.id = "camera-face-guide";
+  overlay.className = "camera-face-guide";
+  overlay.setAttribute("aria-hidden", "true");
+
+  let lightGuide = camera.faceGuideLightElement;
+  let darkGuide = camera.faceGuideDarkElement;
+  if (lightGuide != null) {
+    lightGuide.className = "camera-face-guide__image camera-face-guide__light";
+    overlay.appendChild(lightGuide);
+  }
+  if (darkGuide != null) {
+    darkGuide.className = "camera-face-guide__image camera-face-guide__dark";
+    overlay.appendChild(darkGuide);
+  }
+
+  document.body.appendChild(overlay);
+  camera.faceGuideOverlay = overlay;
+  hideCameraFaceGuideOverlay();
+}
+
+function hideCameraFaceGuideOverlay() {
+  let camera = scene?.session?.camera;
+  let overlay = camera?.faceGuideOverlay;
+  if (overlay == null) return;
+  overlay.style.visibility = "hidden";
+  overlay.style.opacity = "0";
+}
+
+function updateCameraFaceGuideOverlay(layout, previewY, transition, preview) {
+  let prompt = scene.session.cameraPrompt;
+  let camera = scene.session.camera;
+  let overlay = camera.faceGuideOverlay;
+  let darkGuide = camera.faceGuideDarkElement;
+  let lightGuide = camera.faceGuideLightElement;
+  if (
+    camera.status == "captured" ||
+    prompt.confirming ||
+    prompt.exitConfirming ||
+    overlay == null ||
+    darkGuide == null ||
+    lightGuide == null ||
+    transition <= 0
+  ) {
+    hideCameraFaceGuideOverlay();
+    return;
+  }
+
+  updateCameraFaceGuideLuminance(preview);
+  camera.faceGuideDarkMix = animateData(
+    camera.faceGuideDarkMix,
+    camera.faceGuideDarkTarget,
+    0.14,
+  );
+
+  let canvas = _renderer?.canvas;
+  if (canvas == null || width <= 0 || height <= 0) {
+    hideCameraFaceGuideOverlay();
+    return;
+  }
+
+  let canvasBounds = canvas.getBoundingClientRect();
+  let scaleX = canvasBounds.width / width;
+  let scaleY = canvasBounds.height / height;
+  let previewLeft = width / 2 - layout.previewWidth / 2;
+  let previewTop = height / 2 + previewY - layout.previewHeight / 2;
+  overlay.style.left = `${canvasBounds.left + previewLeft * scaleX}px`;
+  overlay.style.top = `${canvasBounds.top + previewTop * scaleY}px`;
+  overlay.style.width = `${layout.previewWidth * scaleX}px`;
+  overlay.style.height = `${layout.previewHeight * scaleY}px`;
+  overlay.style.borderRadius = `${layout.previewRadius * min(scaleX, scaleY)}px`;
+  overlay.style.visibility = "visible";
+  overlay.style.opacity = `${constrain(transition, 0, 1)}`;
+
+  let guideOpacity = 220 / 255;
+  lightGuide.style.opacity = `${guideOpacity * (1 - camera.faceGuideDarkMix)}`;
+  darkGuide.style.opacity = `${guideOpacity * camera.faceGuideDarkMix}`;
 }
 
 function drawSessionPhotoCountdownPattern(target, transition) {
@@ -652,7 +826,10 @@ function drawCameraExitConfirmation(prompt) {
 
 function drawCameraSessionFrontUi() {
   let prompt = scene.session.cameraPrompt;
-  if (!prompt.open) return;
+  if (!prompt.open) {
+    hideCameraFaceGuideOverlay();
+    return;
+  }
 
   prompt.transition = animateData(
     prompt.transition,
@@ -665,6 +842,7 @@ function drawCameraSessionFrontUi() {
     prompt.closing = false;
     scene.session.mode = prompt.nextMode;
     if (scene.session.mode == "active") data.loading.position.y = height;
+    hideCameraFaceGuideOverlay();
     return;
   }
 
@@ -849,6 +1027,7 @@ function drawCameraSessionFrontUi() {
     layout.previewWidth,
     layout.previewHeight,
   );
+  updateCameraFaceGuideOverlay(layout, previewY, transition, preview);
   noFill();
   stroke(79, 15, 47, 180 * transition);
   strokeWeight(2 * scene.ui.scale);

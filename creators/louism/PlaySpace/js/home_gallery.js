@@ -1,4 +1,6 @@
 const PLAYSPACE_HOME_GALLERY_INTERVAL = 5000;
+const PLAYSPACE_HIDDEN_HOME_EXAMPLES_KEY =
+  "playspace.hidden-home-examples.v1";
 
 scene.homeGallery = {
   assetPaths: {
@@ -14,6 +16,13 @@ scene.homeGallery = {
   gradientWidth: 0,
   gradientHeight: 0,
   examples: [],
+  hiddenExampleIds: new Set(),
+  moderation: {
+    open: false,
+    saving: false,
+    draftHiddenIds: new Set(),
+    element: null,
+  },
   exampleRequestId: 0,
   position: 0,
   targetPosition: 0,
@@ -45,6 +54,7 @@ function preloadHomeGalleryAssets() {
 }
 
 function setupHomeGallery() {
+  restoreHiddenHomeExamples();
   data.amount++;
   data.loading.status = true;
   refreshHomeExamples().finally(loaded);
@@ -58,7 +68,217 @@ function homeGalleryRelativeSlot(index, position, count) {
 }
 
 function homeGalleryDisplayCards() {
-  return scene.homeGallery.examples;
+  let state = scene.homeGallery;
+  return state.examples.filter(
+    (card) => !state.hiddenExampleIds.has(homeExampleId(card.url)),
+  );
+}
+
+function homeExampleId(url) {
+  try {
+    return decodeURIComponent(new URL(url, window.location.href).pathname);
+  } catch (error) {
+    return String(url || "");
+  }
+}
+
+function restoreHiddenHomeExamples() {
+  try {
+    let saved = JSON.parse(
+      localStorage.getItem(PLAYSPACE_HIDDEN_HOME_EXAMPLES_KEY) || "[]",
+    );
+    scene.homeGallery.hiddenExampleIds = new Set(
+      Array.isArray(saved)
+        ? saved.filter((value) => typeof value == "string")
+        : [],
+    );
+  } catch (error) {
+    scene.homeGallery.hiddenExampleIds = new Set();
+    console.warn("Unable to restore hidden PlaySpace examples", error);
+  }
+}
+
+function saveHiddenHomeExamples() {
+  try {
+    localStorage.setItem(
+      PLAYSPACE_HIDDEN_HOME_EXAMPLES_KEY,
+      JSON.stringify([...scene.homeGallery.hiddenExampleIds]),
+    );
+  } catch (error) {
+    console.warn("Unable to save hidden PlaySpace examples", error);
+  }
+}
+
+function validHiddenHomeExampleIds(values) {
+  if (!Array.isArray(values)) return [];
+  return values.filter((value) =>
+    typeof value == "string" &&
+    /^\/example\/\d{13}-[A-Za-z0-9_-]+\.png$/.test(value)
+  );
+}
+
+function applyHiddenHomeExamples(values) {
+  let state = scene.homeGallery;
+  state.hiddenExampleIds = new Set(validHiddenHomeExampleIds(values));
+  saveHiddenHomeExamples();
+  state.position = 0;
+  state.targetPosition = 0;
+  state.lastAutoAt = millis();
+}
+
+async function publishHiddenHomeExamples(values) {
+  let response = await fetch(playSpaceApiUrl("/api/examples/moderation"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ excludedExampleIds: [...values] }),
+  });
+  let payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    let error = new Error(
+      payload.error || `Moderation service returned ${response.status}`,
+    );
+    error.status = response.status;
+    throw error;
+  }
+  return validHiddenHomeExampleIds(payload.excludedExampleIds);
+}
+
+function homeGalleryModerationErrorMessage(error) {
+  if (error?.status == 404) {
+    return "The cloud gallery needs the updated PlaySpace Worker. " +
+      "Deploy the supplied PlaySpace_Worker.js, then tap Try again.";
+  }
+  if (error?.status == 403) {
+    return "This kiosk address is not allowed by the cloud gallery Worker.";
+  }
+  if (Number.isFinite(error?.status)) {
+    return `Cloud gallery could not save (error ${error.status}). ` +
+      "Tap Try again.";
+  }
+  return "Could not reach the shared gallery. Check the internet connection.";
+}
+
+function closeHomeGalleryModeration(saveChanges = false) {
+  let state = scene.homeGallery;
+  let moderation = state.moderation;
+  if (!moderation.open || moderation.saving) return false;
+  if (saveChanges) {
+    applyHiddenHomeExamples([...moderation.draftHiddenIds]);
+  }
+  moderation.element?.remove();
+  moderation.element = null;
+  moderation.draftHiddenIds.clear();
+  moderation.saving = false;
+  moderation.open = false;
+  return true;
+}
+
+function openHomeGalleryModeration() {
+  let state = scene.homeGallery;
+  let moderation = state.moderation;
+  if (scene.session.mode != "idle" || moderation.open) return false;
+  let availableIds = new Set(
+    state.examples.map((card) => homeExampleId(card.url)),
+  );
+  moderation.draftHiddenIds = new Set(
+    [...state.hiddenExampleIds].filter((id) => availableIds.has(id)),
+  );
+  moderation.saving = false;
+
+  let overlay = document.createElement("section");
+  overlay.className = "home-moderation";
+  overlay.setAttribute("aria-label", "Home gallery moderation");
+
+  let header = document.createElement("header");
+  let heading = document.createElement("div");
+  let title = document.createElement("h1");
+  title.textContent = "Choose examples for Home";
+  let note = document.createElement("p");
+  note.textContent = "Dimmed examples are excluded. Tap again to include them.";
+  heading.append(title, note);
+
+  let cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "home-moderation__cancel";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", () => closeHomeGalleryModeration(false));
+  header.append(heading, cancel);
+
+  let grid = document.createElement("div");
+  grid.className = "home-moderation__grid";
+  if (state.examples.length == 0) {
+    let empty = document.createElement("p");
+    empty.className = "home-moderation__empty";
+    empty.textContent = "No cloud examples are available.";
+    grid.append(empty);
+  }
+  for (let card of state.examples) {
+    let id = homeExampleId(card.url);
+    let button = document.createElement("button");
+    button.type = "button";
+    button.className = "home-moderation__card";
+    let image = document.createElement("img");
+    image.src = card.url;
+    image.alt = "PlaySpace poster example";
+    image.draggable = false;
+    let label = document.createElement("span");
+    label.textContent = "Excluded";
+    button.append(image, label);
+
+    let updateState = () => button.setAttribute(
+      "aria-pressed",
+      moderation.draftHiddenIds.has(id) ? "true" : "false",
+    );
+    updateState();
+    button.addEventListener("click", () => {
+      if (moderation.draftHiddenIds.has(id)) {
+        moderation.draftHiddenIds.delete(id);
+      } else {
+        moderation.draftHiddenIds.add(id);
+      }
+      updateState();
+    });
+    grid.append(button);
+  }
+
+  let done = document.createElement("button");
+  done.type = "button";
+  done.className = "home-moderation__done";
+  done.textContent = "Done";
+  done.addEventListener("click", async () => {
+    if (moderation.saving) return;
+    moderation.saving = true;
+    done.disabled = true;
+    cancel.disabled = true;
+    done.textContent = "Saving...";
+    try {
+      let saved = await publishHiddenHomeExamples(
+        moderation.draftHiddenIds,
+      );
+      moderation.saving = false;
+      moderation.draftHiddenIds = new Set(saved);
+      closeHomeGalleryModeration(true);
+    } catch (error) {
+      console.warn("Unable to publish PlaySpace gallery moderation", error);
+      moderation.saving = false;
+      done.disabled = false;
+      cancel.disabled = false;
+      done.textContent = "Try again";
+      note.textContent = homeGalleryModerationErrorMessage(error);
+    }
+  });
+
+  overlay.append(header, grid, done);
+  document.body.append(overlay);
+  moderation.element = overlay;
+  moderation.open = true;
+  return true;
+}
+
+function toggleHomeGalleryModeration() {
+  return scene.homeGallery.moderation.open
+    ? closeHomeGalleryModeration(false)
+    : openHomeGalleryModeration();
 }
 
 async function refreshHomeExamples() {
@@ -71,6 +291,9 @@ async function refreshHomeExamples() {
     if (!response.ok) throw new Error("Example service unavailable");
     let payload = await response.json();
     let urls = Array.isArray(payload.examples) ? payload.examples : [];
+    if (Array.isArray(payload.excludedExampleIds)) {
+      applyHiddenHomeExamples(payload.excludedExampleIds);
+    }
     let cards = await Promise.all(urls.map((url) => new Promise((resolve) => {
       loadImage(
         `${url}?v=${Date.now()}`,

@@ -5,11 +5,7 @@ function playSpaceApiOrigin() {
   if (typeof window.PLAYSPACE_API_ORIGIN == "string") {
     return window.PLAYSPACE_API_ORIGIN.replace(/\/$/, "");
   }
-  let hostname = window.location.hostname.toLowerCase();
-  let usesLocalServer = hostname == "localhost" ||
-    hostname == "127.0.0.1" ||
-    hostname.endsWith(".local");
-  return usesLocalServer ? "" : PLAYSPACE_REMOTE_API_ORIGIN;
+  return PLAYSPACE_REMOTE_API_ORIGIN;
 }
 
 function playSpaceApiUrl(path) {
@@ -63,6 +59,7 @@ var scene = {
       guides: false,
     },
     session: {
+      generation: 0,
       mode: "loading",
       restoreMode: null,
       photo: null,
@@ -93,6 +90,16 @@ var scene = {
         stream: null,
         buffer: null,
         captureBuffer: null,
+        faceGuideDarkElement: null,
+        faceGuideDarkPath: "assets/ui/camera/face_marking.svg",
+        faceGuideLightElement: null,
+        faceGuideLightPath: "assets/ui/camera/face_marking_light.svg",
+        faceGuideOverlay: null,
+        faceGuideAnalysisBuffer: null,
+        faceGuideLuminance: 0,
+        faceGuideLuminanceUpdatedAt: 0,
+        faceGuideDarkTarget: 0,
+        faceGuideDarkMix: 0,
         captureLabelPath: "assets/data/camera_capture_labels.txt",
         captureLabels: ["Make Your Cover Shot!"],
         captureLabel: "Make Your Cover Shot!",
@@ -769,6 +776,7 @@ scene.ui = {
     open: false,
     pending: false,
     autoDownload: false,
+    sessionGeneration: null,
     snapshot: null,
     posterSnapshot: null,
     layers: [],

@@ -370,9 +370,8 @@ const server = http.createServer((request, response) => {
 });
 
 server.listen(port, "0.0.0.0", () => {
-  console.log(`PlaySpace kiosk: http://localhost:${port}`);
-  console.log(`Visitor downloads: ${publicOrigin}`);
-  console.log(`Wi-Fi: ${wifiName}`);
+  console.log(`PlaySpace local kiosk: http://localhost:${port}`);
+  console.log("Poster downloads: Cloudflare endpoint in js/runtime_config.js");
 });
 
 setInterval(() => {
