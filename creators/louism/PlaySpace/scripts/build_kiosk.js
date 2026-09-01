@@ -79,7 +79,7 @@ async function buildApplicationBundle(indexSource, apiOrigin) {
     }
     if (apiOrigin != null) {
       contents = contents.replaceAll(
-        "https://poster.ideafest.id",
+        "https://playspace-poster-api.louis-marcellino.workers.dev",
         apiOrigin,
       );
     }
