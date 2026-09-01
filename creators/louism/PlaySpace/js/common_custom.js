@@ -26,6 +26,8 @@ var scene = {
     composition: {
       width: 1080,
       height: 1920,
+      exportWidth: 1440,
+      exportHeight: 2560,
       fitScale: 0.8,
       safeInset: 0.08,
       cornerRadius: 0.05,
@@ -36,7 +38,7 @@ var scene = {
     creationCard: {
       width: 1080,
       height: 1350,
-      widthRatio: 0.55,
+      widthRatio: 0.859375,
       safeInset: 0.08,
       cornerRadius: 0.05,
     },

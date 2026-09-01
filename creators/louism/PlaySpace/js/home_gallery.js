@@ -188,6 +188,22 @@ function openHomeGalleryModeration() {
   let overlay = document.createElement("section");
   overlay.className = "home-moderation";
   overlay.setAttribute("aria-label", "Home gallery moderation");
+  for (let eventName of [
+    "pointerdown",
+    "pointermove",
+    "pointerup",
+    "pointercancel",
+    "touchstart",
+    "touchmove",
+    "touchend",
+    "touchcancel",
+    "mousedown",
+    "mousemove",
+    "mouseup",
+    "click",
+  ]) {
+    overlay.addEventListener(eventName, (event) => event.stopPropagation());
+  }
 
   let header = document.createElement("header");
   let heading = document.createElement("div");

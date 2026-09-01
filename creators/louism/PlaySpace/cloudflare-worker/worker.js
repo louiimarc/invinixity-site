@@ -286,9 +286,8 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function downloadPage(token, expiresAt) {
+function downloadPage(token) {
   let imageUrl = `/poster/${encodeURIComponent(token)}.png`;
-  let minutes = Math.max(1, Math.ceil((expiresAt - Date.now()) / 60000));
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -313,7 +312,7 @@ function downloadPage(token, expiresAt) {
     <h1>Your poster is ready!</h1>
     <img class="poster" src="${escapeHtml(imageUrl)}" alt="Your finished PlaySpace poster">
     <a class="download" href="${escapeHtml(imageUrl)}?download=1">Download poster</a>
-    <p class="note">Available for about ${minutes} minutes.</p>
+    <p class="note">Available for 1 day.</p>
   </main>
 </body>
 </html>`;
@@ -330,8 +329,7 @@ async function serveDownloadPage(request, env, token) {
       }),
     });
   }
-  let expiresAt = Number(object.customMetadata?.expiresAt || Date.now());
-  return new Response(downloadPage(token, expiresAt), {
+  return new Response(downloadPage(token), {
     headers: responseHeaders(request, {
       "Content-Type": "text/html; charset=utf-8",
     }),

@@ -1,13 +1,15 @@
 const crypto = require("crypto");
 const childProcess = require("child_process");
 const fs = require("fs");
-const http = require("http");
 const os = require("os");
 const path = require("path");
 const QRCode = require("qrcode");
+const { createLocalControl } = require("./scripts/local_control_server.js");
+const { createServerSettings } = require("./scripts/server_tls.js");
 
 const root = __dirname;
-const port = Number.parseInt(process.env.PLAYSPACE_PORT || "8080", 10);
+const serverSettings = createServerSettings();
+const { port, protocol } = serverSettings;
 
 function currentLocalHostname() {
   try {
@@ -16,17 +18,18 @@ function currentLocalHostname() {
       ["--get", "LocalHostName"],
       { encoding: "utf8" },
     ).trim();
-    if (name != "") return `${name}.local`;
+    if (name != "") return `${name}.local`.toLowerCase();
   } catch (error) {
     // Fall back to Node's hostname on non-macOS development machines.
   }
   let name = os.hostname().trim();
-  return name.endsWith(".local") ? name : `${name}.local`;
+  return (name.endsWith(".local") ? name : `${name}.local`).toLowerCase();
 }
 
+const localHostname = currentLocalHostname();
 const publicOrigin = (
   process.env.PLAYSPACE_PUBLIC_ORIGIN ||
-    `http://${currentLocalHostname()}:${port}`
+    `${protocol}://${localHostname}:${port}`
 ).replace(/\/$/, "");
 const wifiName = process.env.PLAYSPACE_WIFI_NAME || "PlaySpace";
 const wifiPassword = process.env.PLAYSPACE_WIFI_PASSWORD || "playspace-demo";
@@ -74,6 +77,13 @@ function sendJson(response, status, body) {
     "Content-Type": "application/json; charset=utf-8",
   });
 }
+
+const localControl = createLocalControl({
+  port,
+  localHostname,
+  protocol,
+  sendJson,
+});
 
 function nextExampleFilename() {
   let highest = 0;
@@ -154,6 +164,8 @@ function downloadPage(token, session) {
 
 async function handleRequest(request, response) {
   let url = new URL(request.url, "http://localhost");
+
+  if (await localControl.handle(request, response, url)) return;
 
   if (request.method == "GET" && url.pathname == "/api/config") {
     sendJson(response, 200, {
@@ -264,6 +276,7 @@ async function handleRequest(request, response) {
           sendJson(response, 201, {
             token,
             downloadUrl: `${publicOrigin}/d/${token}`,
+            posterImageUrl: `${publicOrigin}/poster/${token}.png`,
             exampleUrl: `/assets/examples/generated/${exampleFilename}`,
             expiresAt,
           });
@@ -326,6 +339,8 @@ async function handleRequest(request, response) {
     try {
       relative = url.pathname == "/"
         ? "index.html"
+        : ["/control", "/control/"].includes(url.pathname)
+          ? "control/index.html"
         : decodeURIComponent(url.pathname.slice(1));
     } catch (error) {
       send(response, 400, "Invalid URL");
@@ -361,7 +376,7 @@ async function handleRequest(request, response) {
   });
 }
 
-const server = http.createServer((request, response) => {
+const server = serverSettings.createServer((request, response) => {
   handleRequest(request, response).catch((error) => {
     console.error(error);
     if (!response.headersSent) sendJson(response, 500, { error: "Server error" });
@@ -370,7 +385,11 @@ const server = http.createServer((request, response) => {
 });
 
 server.listen(port, "0.0.0.0", () => {
-  console.log(`PlaySpace local kiosk: http://localhost:${port}`);
+  console.log(`PlaySpace local kiosk: ${protocol}://localhost:${port}`);
+  console.log(`Phone controller: ${localControl.controlUrl}`);
+  for (let link of localControl.kioskLinks) {
+    console.log(`${link.label}: ${link.url}`);
+  }
   console.log("Poster downloads: Cloudflare endpoint in js/runtime_config.js");
 });
 

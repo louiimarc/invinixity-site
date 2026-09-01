@@ -26,6 +26,9 @@ var downloadHandoff = {
   },
 };
 
+const PLAYSPACE_CLOUD_HANDOFF_TIMEOUT = 15000;
+const PLAYSPACE_LOCAL_HANDOFF_TIMEOUT = 12000;
+
 function downloadHandoffElement(selector) {
   return downloadHandoff.overlay?.querySelector(selector) || null;
 }
@@ -291,22 +294,40 @@ async function setDownloadHandoffQr(image, text) {
   if (image == null) return;
   let requestedText = String(text);
   image.dataset.qrText = requestedText;
+  image.removeAttribute("src");
   try {
-    if (globalThis.QRCode?.toDataURL == null) {
+    if (globalThis.QRCode?.toString == null) {
       throw new Error("Browser QR renderer unavailable");
     }
-    let source = await globalThis.QRCode.toDataURL(requestedText, {
+    let svg = await globalThis.QRCode.toString(requestedText, {
+      type: "svg",
       width: 512,
       errorCorrectionLevel: "M",
       margin: 2,
       color: { dark: "#1D1D1D", light: "#FFFFFF" },
     });
+    let source = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
     if (image.dataset.qrText == requestedText) image.src = source;
   } catch (error) {
-    console.warn("Unable to render QR code in the browser", error);
-    image.src = playSpaceApiUrl(
-      `/api/qr?text=${encodeURIComponent(requestedText)}`,
-    );
+    console.warn("Unable to render QR code as SVG", error);
+    try {
+      if (globalThis.QRCode?.toDataURL == null) throw error;
+      let source = await globalThis.QRCode.toDataURL(requestedText, {
+        width: 512,
+        errorCorrectionLevel: "M",
+        margin: 2,
+        color: { dark: "#1D1D1D", light: "#FFFFFF" },
+      });
+      if (image.dataset.qrText == requestedText) image.src = source;
+    } catch (fallbackError) {
+      console.warn("Unable to render QR code as PNG", fallbackError);
+      if (image.dataset.qrText == requestedText) {
+        image.src =
+          `${window.location.origin}/api/qr?text=${encodeURIComponent(
+            requestedText,
+          )}`;
+      }
+    }
   }
 }
 
@@ -324,6 +345,79 @@ function dataUrlBlob(dataUrl) {
 function cardPreviewPosterBlob(snapshot) {
   if (snapshot == null) throw new Error("The poster preview is unavailable");
   return dataUrlBlob(snapshot.canvas.toDataURL("image/png"));
+}
+
+async function fetchDownloadHandoffWithTimeout(url, options, timeout) {
+  let controller = new AbortController();
+  let timer = window.setTimeout(() => controller.abort(), timeout);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+async function requestCloudDownloadSession(posterBlob) {
+  let controller = new AbortController();
+  let timer = window.setTimeout(
+    () => controller.abort(),
+    PLAYSPACE_CLOUD_HANDOFF_TIMEOUT,
+  );
+  try {
+    let configResponse = await fetch(playSpaceApiUrl("/api/config"), {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!configResponse.ok) throw new Error("Download service unavailable");
+    let config = await configResponse.json();
+    let posterResponse = await fetch(playSpaceApiUrl("/api/posters"), {
+      method: "POST",
+      headers: { "Content-Type": "image/png" },
+      body: posterBlob,
+      signal: controller.signal,
+    });
+    if (!posterResponse.ok) throw new Error("Unable to save poster");
+    let session = await posterResponse.json();
+    if (session.exampleUrl == null) {
+      let exampleResponse = await fetch(playSpaceApiUrl("/api/examples"), {
+        method: "POST",
+        headers: { "Content-Type": "image/png" },
+        body: posterBlob,
+        signal: controller.signal,
+      });
+      if (!exampleResponse.ok) throw new Error("Unable to save poster example");
+      let savedExample = await exampleResponse.json();
+      session.exampleUrl = savedExample.url;
+    }
+    return { config, session, localFallback: false };
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+async function requestLocalDownloadSession(posterBlob) {
+  let response = await fetchDownloadHandoffWithTimeout(
+    `${window.location.origin}/api/posters`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "image/png" },
+      body: posterBlob,
+    },
+    PLAYSPACE_LOCAL_HANDOFF_TIMEOUT,
+  );
+  if (!response.ok) throw new Error("Unable to save poster on this Mac");
+  return {
+    config: {
+      publicOrigin: window.location.origin,
+      wifiName: "PlaySpace",
+      wifiPassword: "",
+      wifiSecurity: "WPA",
+      skipWifi: true,
+      expiryMinutes: 15,
+    },
+    session: await response.json(),
+    localFallback: true,
+  };
 }
 
 async function beginDownloadHandoff(posterSnapshot) {
@@ -355,42 +449,27 @@ async function beginDownloadHandoff(posterSnapshot) {
   setDownloadHandoffProgress(1);
 
   try {
-    let configResponse = await fetch(playSpaceApiUrl("/api/config"), {
-      cache: "no-store",
-    });
-    if (requestId != downloadHandoff.requestId) return;
     let posterBlob = cardPreviewPosterBlob(posterSnapshot);
-    if (!configResponse.ok) throw new Error("Download service unavailable");
-    downloadHandoff.config = await configResponse.json();
-
-    let posterResponse = await fetch(playSpaceApiUrl("/api/posters"), {
-      method: "POST",
-      headers: { "Content-Type": "image/png" },
-      body: posterBlob,
-    });
-    if (requestId != downloadHandoff.requestId) return;
-    if (!posterResponse.ok) throw new Error("Unable to save poster");
-    let session = await posterResponse.json();
-    if (session.exampleUrl == null) {
-      let exampleResponse = await fetch(playSpaceApiUrl("/api/examples"), {
-        method: "POST",
-        headers: { "Content-Type": "image/png" },
-        body: posterBlob,
-      });
-      if (requestId != downloadHandoff.requestId) return;
-      if (!exampleResponse.ok) {
-        throw new Error("Unable to save poster example");
-      }
-      let savedExample = await exampleResponse.json();
-      session.exampleUrl = savedExample.url;
+    let result;
+    try {
+      result = await requestCloudDownloadSession(posterBlob);
+    } catch (cloudError) {
+      console.warn(
+        "Cloud poster handoff unavailable; using this Mac instead",
+        cloudError,
+      );
+      result = await requestLocalDownloadSession(posterBlob);
     }
+    if (requestId != downloadHandoff.requestId) return;
+    let session = result.session;
+    downloadHandoff.config = result.config;
     downloadHandoff.downloadUrl = session.downloadUrl;
     downloadHandoff.token = session.token;
     downloadHandoff.posterImageUrl = session.posterImageUrl ||
-      playSpaceApiUrl(`/poster/${session.token}.png`);
+      `${new URL(session.downloadUrl).origin}/poster/${session.token}.png`;
     downloadHandoff.scanExpiresAt = Date.now() + 60000;
     prepareDownloadHandoffPosterScene();
-    refreshHomeExamples();
+    if (!result.localFallback) refreshHomeExamples();
     saveDownloadHandoff(session.expiresAt);
     if (downloadHandoff.config.skipWifi) showPosterDownloadStep();
     else showWifiJoinStep();

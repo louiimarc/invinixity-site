@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "build:kiosk": "node scripts/build_kiosk.js",
+    "build:kiosk:ideafest": "PLAYSPACE_KIOSK_API_ORIGIN=https://poster.ideafest.id node scripts/build_kiosk.js",
     "start:kiosk": "npm run build:kiosk && npm --prefix output/kiosk-runtime start"
   },
   "dependencies": {

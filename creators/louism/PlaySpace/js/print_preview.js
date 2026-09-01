@@ -51,7 +51,10 @@ function cardPreviewSnapshot(image, fullResolution = false) {
     max(1, round(bounds.height * scaleY)),
   );
   if (fullResolution) {
-    snapshot.resize(scene.composition.width, scene.composition.height);
+    snapshot.resize(
+      scene.composition.exportWidth,
+      scene.composition.exportHeight,
+    );
     return snapshot;
   }
 

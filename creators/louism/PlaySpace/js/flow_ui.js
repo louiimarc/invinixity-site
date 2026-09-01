@@ -336,7 +336,7 @@ function nearestBackgroundFramePosition(index, position) {
 function captureBackgroundPickerCard() {
   let state = scene.ui.backgroundPicker;
   let posterSnapshot = cardPreviewSnapshot(scene.workspace, true);
-  let cardWidth = scene.composition.width * scene.creationCard.widthRatio;
+  let cardWidth = posterSnapshot.width * scene.creationCard.widthRatio;
   let cardHeight = cardWidth * scene.creationCard.height /
     scene.creationCard.width;
   let rawSnapshot = posterSnapshot.get(

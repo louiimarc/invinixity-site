@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="theme-color" content="#4d1430" />
+    <title>PlaySpace Control</title>
+    <link rel="stylesheet" href="/control/control.css" />
+    <script src="/vendor/qrcode.min.js"></script>
+    <script src="/control/control.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <div>
+        <p class="eyebrow">LOCAL EVENT CONTROL</p>
+        <h1>PlaySpace</h1>
+      </div>
+      <div id="connection" class="connection"><i></i><span>Connecting</span></div>
+    </header>
+
+    <main>
+      <section class="panel devices-panel">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">LIVE STATUS</p>
+            <h2>Kiosks</h2>
+          </div>
+          <button id="refresh" class="secondary" type="button">Refresh</button>
+        </div>
+        <div id="devices" class="device-grid"></div>
+      </section>
+
+      <section class="panel controls-panel">
+        <p class="eyebrow">REMOTE SHORTCUTS</p>
+        <div class="target-row">
+          <h2>Secret modes</h2>
+          <select id="target" aria-label="Target kiosk">
+            <option value="all">Both iPads</option>
+            <option value="ipad-1">iPad 1</option>
+            <option value="ipad-2">iPad 2</option>
+          </select>
+        </div>
+        <div class="action-grid">
+          <button data-action="toggle-seed" type="button">
+            <strong>π Seed mode</strong><small>Toggle generated visitor mode</small>
+          </button>
+          <button data-action="open-moderation" type="button">
+            <strong>∑ Gallery selection</strong><small>Choose Home examples</small>
+          </button>
+        </div>
+        <p id="feedback" class="feedback">Ready.</p>
+      </section>
+
+      <section class="panel join-panel">
+        <p class="eyebrow">SETUP</p>
+        <h2>Open each iPad</h2>
+        <p class="description">
+          Scan the matching code once. The device name is remembered on that iPad.
+        </p>
+        <div id="join-links" class="join-grid"></div>
+        <details id="fallback-details">
+          <summary>Network address alternatives</summary>
+          <div id="fallback-origins" class="fallback-list"></div>
+        </details>
+      </section>
+    </main>
+  </body>
+</html>

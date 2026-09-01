@@ -44,7 +44,17 @@ async function copyRuntimeGlyphs() {
   }
 }
 
-async function buildApplicationBundle(indexSource) {
+function configuredKioskApiOrigin() {
+  let value = String(process.env.PLAYSPACE_KIOSK_API_ORIGIN || "").trim();
+  if (value == "") return null;
+  let url = new URL(value);
+  if (url.protocol != "https:" || url.pathname != "/") {
+    throw new Error("PLAYSPACE_KIOSK_API_ORIGIN must be an HTTPS origin");
+  }
+  return url.origin;
+}
+
+async function buildApplicationBundle(indexSource, apiOrigin) {
   let scriptPattern = /^(\s*)<script src="(js\/[^\"]+\.js)"><\/script>\s*$/gm;
   let scripts = [];
   let inserted = false;
@@ -61,6 +71,18 @@ async function buildApplicationBundle(indexSource) {
 
   let source = scripts.map((relativePath) => {
     let contents = fs.readFileSync(path.join(root, relativePath), "utf8");
+    if (relativePath == "js/runtime_config.js" && apiOrigin != null) {
+      contents = contents.replace(
+        /window\.PLAYSPACE_API_ORIGIN\s*=\s*[\s\S]*?;/,
+        `window.PLAYSPACE_API_ORIGIN = ${JSON.stringify(apiOrigin)};`,
+      );
+    }
+    if (apiOrigin != null) {
+      contents = contents.replaceAll(
+        "https://playspace-poster-api.louis-marcellino.workers.dev",
+        apiOrigin,
+      );
+    }
     return `\n;/* ${relativePath} */\n${contents}`;
   }).join("\n");
   let result = await minify(source, {
@@ -115,11 +137,18 @@ function writeRuntimePackage() {
       "2. Run: npm start",
       "3. Open: http://localhost:8080",
       "",
+      "For event HTTPS, set PLAYSPACE_TLS_CERT and PLAYSPACE_TLS_KEY.",
+      "The HTTPS default port is 8443.",
+      "",
       "This folder is generated. Rebuild it from the source project with:",
       "npm run build:kiosk",
       "",
       "The public poster API address is copied from js/runtime_config.js",
-      "during the build. Rebuild this folder after changing that address.",
+      "during the build, or overridden with PLAYSPACE_KIOSK_API_ORIGIN.",
+      "Rebuild this folder after changing the event API address.",
+      "If cloud delivery is unavailable, finished posters are kept by this",
+      "Mac for 15 minutes and the QR uses its .local address instead.",
+      "The scanning phone must share the Mac's local network for that fallback.",
       "",
     ].join("\n"),
   );
@@ -137,13 +166,20 @@ function directorySize(directory) {
 }
 
 async function main() {
+  let apiOrigin = configuredKioskApiOrigin();
   fs.rmSync(output, { recursive: true, force: true });
   fs.mkdirSync(output, { recursive: true });
 
-  await buildApplicationBundle(fs.readFileSync(path.join(root, "index.html"), "utf8"));
+  await buildApplicationBundle(
+    fs.readFileSync(path.join(root, "index.html"), "utf8"),
+    apiOrigin,
+  );
   buildStylesheet();
   copyFile("site.webmanifest");
   copyFile("scripts/kiosk_server.js", "server.js");
+  copyFile("scripts/local_control_server.js", "local_control_server.js");
+  copyFile("scripts/server_tls.js", "server_tls.js");
+  copyDirectory("control");
   copyDirectory("shader");
   copyDirectory("vendor");
 
@@ -173,6 +209,7 @@ async function main() {
   let megabytes = directorySize(output) / (1024 * 1024);
   console.log(`PlaySpace kiosk runtime built: ${output}`);
   console.log(`Runtime size: ${megabytes.toFixed(1)} MB`);
+  console.log(`Poster API: ${apiOrigin || "source default"}`);
   console.log(`Start it with: cd "${output}" && npm start`);
 }
 
