@@ -355,7 +355,7 @@ async function handleRequest(request, env) {
       wifiPassword: "",
       wifiSecurity: "WPA",
       skipWifi: true,
-      expiryMinutes: EXPIRY_MILLISECONDS / 60000,
+      availableFor: "1 day",
     });
   }
 
