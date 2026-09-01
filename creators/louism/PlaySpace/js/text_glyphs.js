@@ -252,13 +252,64 @@ function prefetchTextGlyphsForCurrentWords() {
   }
 }
 
-function rehumanizeNameTextures() {
-  if (textWords().length == 0) return false;
-  scene.text.textureShuffleSeed = nextTextTextureShuffleSeed();
+function applyTextTextureShuffleSeed(seed) {
+  scene.text.textureShuffleSeed = max(1, seed & 0x7fffffff);
   scene.text.glyphAssets.assignmentCache = Object.create(null);
   prefetchTextGlyphsForCurrentWords();
-  saveTextMemory();
-  scheduleSessionCacheSave();
-  recordEditorHistory();
+}
+
+function rehumanizeSpinSeed(finalSeed, step) {
+  let mixed = (
+    finalSeed ^ Math.imul(step + 1, 0x45d9f3b)
+  ) >>> 0;
+  return max(1, mixed & 0x7fffffff);
+}
+
+function updateRehumanizeTextureSpin() {
+  let state = scene.ui.texturePad;
+  if (!state.spinning) return 1;
+
+  let elapsed = max(0, scene.elapsedTime - state.spinStartedAt);
+  let progress = constrain(elapsed / state.spinDuration, 0, 1);
+  let stepTimes = [
+    0, 0.06, 0.13, 0.21, 0.30, 0.40, 0.51, 0.63, 0.76, 0.89,
+  ];
+  let targetStep = 0;
+  for (let index = 1; index < state.spinStepCount; index++) {
+    if (progress < stepTimes[index]) break;
+    targetStep = index;
+  }
+  if (targetStep > state.spinStep) {
+    state.spinStep = targetStep;
+    applyTextTextureShuffleSeed(
+      rehumanizeSpinSeed(state.finalSeed, targetStep),
+    );
+    inout.audio.ui?.slide(
+      "rehumanizeSpin",
+      targetStep / max(1, state.spinStepCount - 1),
+      mouseX / width,
+    );
+  }
+
+  if (progress >= 1) {
+    applyTextTextureShuffleSeed(state.finalSeed);
+    state.spinning = false;
+    state.spinStep = -1;
+    saveTextMemory();
+    scheduleSessionCacheSave();
+    recordEditorHistory();
+    return 1;
+  }
+  return progress;
+}
+
+function rehumanizeNameTextures() {
+  if (textWords().length == 0 || scene.ui.texturePad.spinning) return false;
+  let state = scene.ui.texturePad;
+  state.spinning = true;
+  state.spinStartedAt = scene.elapsedTime;
+  state.spinStep = -1;
+  state.finalSeed = nextTextTextureShuffleSeed();
+  updateRehumanizeTextureSpin();
   return true;
 }

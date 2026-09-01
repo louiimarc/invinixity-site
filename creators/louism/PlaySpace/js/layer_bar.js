@@ -373,7 +373,7 @@ function drawLayerBar() {
   translate(0, 0, 48);
   noStroke();
   fill(255, 255 * state.position);
-  textFont(scene.text.font || scene.font);
+  textFont(scene.font);
   textAlign(layout.sideMix < 0.5 ? LEFT : RIGHT, CENTER);
   textSize(34 * scene.ui.scale * layout.compactFactor);
   text(

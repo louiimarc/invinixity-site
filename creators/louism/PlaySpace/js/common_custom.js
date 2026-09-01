@@ -743,6 +743,12 @@ scene.ui = {
     bounds: null,
     titleWidth: 0,
     titleWidthScale: 0,
+    spinning: false,
+    spinStartedAt: 0,
+    spinDuration: 1.35,
+    spinStep: -1,
+    spinStepCount: 10,
+    finalSeed: 1,
   },
   layerBar: {
     position: 0,
@@ -1426,6 +1432,8 @@ function clearTextMemory() {
   scene.text.sizeAnimations = Object.create(null);
   scene.text.textureMixes = Object.create(null);
   scene.text.textureShuffleSeed = nextTextTextureShuffleSeed();
+  scene.ui.texturePad.spinning = false;
+  scene.ui.texturePad.spinStep = -1;
   scene.text.layerOrder = ["photo"];
   scene.ui.layerBar.selectedKey = null;
   scene.ui.layerBar.dragging = false;
@@ -1493,6 +1501,8 @@ function recordEditorHistory() {
 function restoreEditorHistorySnapshot(snapshot) {
   if (snapshot == null) return false;
   let history = scene.ui.editorHistory;
+  scene.ui.texturePad.spinning = false;
+  scene.ui.texturePad.spinStep = -1;
   history.restoring = true;
   try {
     scene.text.buffer = snapshot.buffer;
