@@ -347,11 +347,37 @@ function cardPreviewPosterBlob(snapshot) {
   return dataUrlBlob(snapshot.canvas.toDataURL("image/png"));
 }
 
-async function fetchDownloadHandoffWithTimeout(url, options, timeout) {
+function downloadHandoffTimeoutError(label) {
+  return new Error(`${label} took too long. Tap Try again.`);
+}
+
+function normalizeCloudDownloadError(error) {
+  if (error?.name == "AbortError") {
+    return downloadHandoffTimeoutError("Online poster upload");
+  }
+  if (error instanceof TypeError) {
+    return new Error(
+      "The online download service could not be reached. Tap Try again.",
+    );
+  }
+  return error;
+}
+
+async function fetchDownloadHandoffWithTimeout(
+  url,
+  options,
+  timeout,
+  timeoutLabel,
+) {
   let controller = new AbortController();
   let timer = window.setTimeout(() => controller.abort(), timeout);
   try {
     return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw downloadHandoffTimeoutError(timeoutLabel);
+    }
+    throw error;
   } finally {
     window.clearTimeout(timer);
   }
@@ -390,6 +416,8 @@ async function requestCloudDownloadSession(posterBlob) {
       session.exampleUrl = savedExample.url;
     }
     return { config, session, localFallback: false };
+  } catch (error) {
+    throw normalizeCloudDownloadError(error);
   } finally {
     window.clearTimeout(timer);
   }
@@ -404,6 +432,7 @@ async function requestLocalDownloadSession(posterBlob) {
       body: posterBlob,
     },
     PLAYSPACE_LOCAL_HANDOFF_TIMEOUT,
+    "Saving this poster on the kiosk Mac",
   );
   if (!response.ok) throw new Error("Unable to save poster on this Mac");
   return {
@@ -454,6 +483,7 @@ async function beginDownloadHandoff(posterSnapshot) {
     try {
       result = await requestCloudDownloadSession(posterBlob);
     } catch (cloudError) {
+      if (!playSpaceRunsOnLocalKioskHost()) throw cloudError;
       console.warn(
         "Cloud poster handoff unavailable; using this Mac instead",
         cloudError,
