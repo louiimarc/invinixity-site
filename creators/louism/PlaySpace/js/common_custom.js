@@ -38,7 +38,7 @@ var scene = {
     creationCard: {
       width: 1080,
       height: 1350,
-      widthRatio: 0.859375,
+      widthRatio: 0.7734375,
       safeInset: 0.08,
       cornerRadius: 0.05,
     },
