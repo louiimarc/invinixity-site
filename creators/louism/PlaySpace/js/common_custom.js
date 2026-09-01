@@ -1,5 +1,5 @@
 var PLAYSPACE_REMOTE_API_ORIGIN =
-  "https://playspace-poster-api.louis-marcellino.workers.dev";
+  "https://poster.ideafest.id";
 
 function playSpaceApiOrigin() {
   if (typeof window.PLAYSPACE_API_ORIGIN == "string") {
