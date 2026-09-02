@@ -528,11 +528,17 @@ function prepareDownloadHandoffPosterScene() {
     poster.src = downloadHandoff.posterImageUrl;
   }
   let back = downloadHandoffElement(".handoff-poster-back");
+  let backArtwork = downloadHandoffElement(".handoff-poster-back-art");
   let backgroundPath = PLAYSPACE_CARD_BACK_BACKGROUND_PATHS[
     downloadHandoff.backgroundFrameIndex
   ] || PLAYSPACE_CARD_BACK_BACKGROUND_PATHS[0];
   if (back != null) {
     back.style.backgroundImage = `url("${backgroundPath}")`;
+  }
+  if (backArtwork != null) {
+    backArtwork.src = cardBackArtworkUrlForBackground(
+      downloadHandoff.backgroundFrameIndex,
+    );
   }
 }
 

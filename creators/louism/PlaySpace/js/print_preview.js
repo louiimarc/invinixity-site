@@ -409,7 +409,7 @@ function drawPrintPreviewBack(
   let background = scene.flowUi.cardBackBackgrounds[selectedIndex] ||
     scene.flowUi.cardBackBackgrounds[0] ||
     scene.flowUi.backgrounds[selectedIndex];
-  let artwork = scene.flowUi.cardBack;
+  let artwork = cardBackArtworkForBackground(selectedIndex);
 
   fill(255);
   rectMode(CENTER);

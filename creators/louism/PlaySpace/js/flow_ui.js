@@ -45,13 +45,37 @@ const PLAYSPACE_CARD_BACK_BACKGROUND_PATHS = [
 
 const PLAYSPACE_CARD_BACK_PATH = "assets/poster/back/card_back_side.png";
 const PLAYSPACE_BACKGROUND_DIM_ALPHA = 255 * 0.05;
+const PLAYSPACE_PALETTE_TO_BACKGROUND = [5, 1, 2, 4, 0, 3];
 
 scene.flowUi = {
   slices: Object.create(null),
   backgrounds: [],
   cardBackBackgrounds: [],
   cardBack: null,
+  cardBackLight: null,
+  cardBackLightUrl: "",
 };
+
+function lightCardBackArtwork(source) {
+  let artwork = source.get();
+  artwork.loadPixels();
+  for (let index = 0; index < artwork.pixels.length; index += 4) {
+    let alpha = artwork.pixels[index + 3];
+    if (alpha <= 0) continue;
+    let red = artwork.pixels[index];
+    let green = artwork.pixels[index + 1];
+    let blue = artwork.pixels[index + 2];
+    let maximum = max(red, green, blue);
+    let minimum = min(red, green, blue);
+    let saturation = maximum <= 0 ? 0 : (maximum - minimum) / maximum;
+    if (saturation > 0.2) continue;
+    artwork.pixels[index] = 255;
+    artwork.pixels[index + 1] = 255;
+    artwork.pixels[index + 2] = 255;
+  }
+  artwork.updatePixels();
+  return artwork;
+}
 
 scene.ui.backgroundPicker = {
   open: false,
@@ -113,6 +137,8 @@ function preloadFlowUiAssets() {
     PLAYSPACE_CARD_BACK_PATH,
     (asset) => {
       asset.resize(scene.composition.width, scene.composition.height);
+      scene.flowUi.cardBackLight = lightCardBackArtwork(asset);
+      scene.flowUi.cardBackLightUrl = "";
       loaded();
     },
     (error) => {
@@ -317,8 +343,41 @@ function drawSelectedFlowCreationCard(target = scene.workspace) {
 }
 
 function backgroundFrameIndexForPalette(paletteIndex) {
-  let paletteToBackground = [5, 1, 2, 4, 0, 3];
-  return paletteToBackground[paletteIndex] ?? 0;
+  return PLAYSPACE_PALETTE_TO_BACKGROUND[paletteIndex] ?? 0;
+}
+
+function paletteIndexForBackgroundFrame(backgroundIndex) {
+  let index = wrappedBackgroundFrameIndex(backgroundIndex);
+  let paletteIndex = PLAYSPACE_PALETTE_TO_BACKGROUND.indexOf(index);
+  return paletteIndex < 0 ? 0 : paletteIndex;
+}
+
+function cardBackForegroundTarget(backgroundIndex) {
+  return frameOverlayForegroundTargetForPaletteIndex(
+    paletteIndexForBackgroundFrame(backgroundIndex),
+  );
+}
+
+function cardBackArtworkForBackground(backgroundIndex) {
+  return cardBackForegroundTarget(backgroundIndex) > 0.5
+    ? scene.flowUi.cardBackLight || scene.flowUi.cardBack
+    : scene.flowUi.cardBack;
+}
+
+function cardBackArtworkUrlForBackground(backgroundIndex) {
+  let artwork = cardBackArtworkForBackground(backgroundIndex);
+  if (artwork == null || artwork == scene.flowUi.cardBack) {
+    return PLAYSPACE_CARD_BACK_PATH;
+  }
+  if (scene.flowUi.cardBackLightUrl == "") {
+    try {
+      scene.flowUi.cardBackLightUrl = artwork.canvas.toDataURL("image/png");
+    } catch (error) {
+      console.warn("Unable to prepare light card-back artwork", error);
+      return PLAYSPACE_CARD_BACK_PATH;
+    }
+  }
+  return scene.flowUi.cardBackLightUrl;
 }
 
 function wrappedBackgroundFrameIndex(index) {

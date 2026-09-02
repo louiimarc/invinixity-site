@@ -100,9 +100,9 @@ function frameOverlayPaletteIndex() {
 }
 
 function frameOverlayForegroundTarget() {
-  let state = scene.frameOverlay;
-  let backgroundHex = state.paletteHexes[frameOverlayPaletteIndex()];
-  return state.darkForegroundBackgrounds.includes(backgroundHex) ? 0 : 1;
+  return frameOverlayForegroundTargetForPaletteIndex(
+    frameOverlayPaletteIndex(),
+  );
 }
 
 function drawFrameOverlay(target = scene.workspace, layerZ = 64) {

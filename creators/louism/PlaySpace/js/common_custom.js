@@ -666,6 +666,14 @@ scene.text = {
   sizeAnimations: Object.create(null),
 };
 
+function frameOverlayForegroundTargetForPaletteIndex(paletteIndex) {
+  let state = scene.frameOverlay;
+  let count = state.paletteHexes.length;
+  let index = ((Math.round(paletteIndex) % count) + count) % count;
+  let backgroundHex = state.paletteHexes[index];
+  return state.darkForegroundBackgrounds.includes(backgroundHex) ? 0 : 1;
+}
+
 scene.content = {
   text: {
     scaleDefault: 0.5,

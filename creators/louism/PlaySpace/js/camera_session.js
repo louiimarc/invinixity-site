@@ -164,13 +164,16 @@ function sessionRunsAsInstalledApp() {
 }
 
 async function requestSessionCameraStream() {
+  let previewAspect = sessionCameraPreviewAspect();
+  let preferredLandscape = previewAspect > 1;
   let attempts = [
     {
       audio: false,
       video: {
         facingMode: { ideal: "user" },
-        width: { ideal: 1280 },
-        height: { ideal: 960 },
+        width: { ideal: preferredLandscape ? 1280 : 1024 },
+        height: { ideal: preferredLandscape ? 1024 : 1280 },
+        aspectRatio: { ideal: previewAspect },
       },
     },
     { audio: false, video: true },
@@ -188,6 +191,10 @@ async function requestSessionCameraStream() {
     }
   }
   throw lastError || new Error("Camera request failed");
+}
+
+function sessionCameraPreviewAspect() {
+  return width > height ? 5 / 4 : 4 / 5;
 }
 
 function sessionCameraErrorMessage(error) {
@@ -236,8 +243,12 @@ function sessionCameraLayout() {
   let logoHeight = logoAsset?.width > 1
     ? logoWidth * logoAsset.height / logoAsset.width
     : logoWidth * 0.65;
-  let previewHeight = min(height * 0.42, (width - padding * 2) * 0.75);
-  let previewWidth = previewHeight / 0.75;
+  let previewAspect = sessionCameraPreviewAspect();
+  let previewWidth = min(
+    width - padding * 2,
+    height * 0.42 * previewAspect,
+  );
+  let previewHeight = previewWidth / previewAspect;
   let buttonWidth = min(260 * scale, previewWidth * 0.44);
   let actionX = previewWidth * 0.27;
   let exitWidth = min(width * 0.22, 120 * scale);
