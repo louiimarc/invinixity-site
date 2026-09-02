@@ -26,8 +26,8 @@ var scene = {
     composition: {
       width: 1080,
       height: 1920,
-      exportWidth: 1440,
-      exportHeight: 2560,
+      exportWidth: 2160,
+      exportHeight: 3840,
       fitScale: 0.8,
       safeInset: 0.08,
       cornerRadius: 0.05,

@@ -193,7 +193,17 @@ function setupDownloadHandoff() {
       <button class="handoff-secondary" type="button" hidden>Try again</button>
     </div>
   `;
-  for (let eventName of ["pointerdown", "pointermove", "pointerup", "click"]) {
+  for (let eventName of [
+    "pointerdown",
+    "pointermove",
+    "pointerup",
+    "pointercancel",
+    "touchstart",
+    "touchmove",
+    "touchend",
+    "touchcancel",
+    "click",
+  ]) {
     overlay.addEventListener(eventName, (event) => event.stopPropagation());
   }
   document.body.appendChild(overlay);
