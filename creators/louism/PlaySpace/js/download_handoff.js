@@ -9,6 +9,7 @@ var downloadHandoff = {
   token: "",
   posterSnapshot: null,
   backgroundFrameIndex: 0,
+  localFallback: false,
   scanExpiresAt: 0,
   countdownTimer: null,
   requestId: 0,
@@ -185,6 +186,10 @@ function setupDownloadHandoff() {
           </div>
           <div class="handoff-scan-copy">
             <p class="handoff-detail"></p>
+            <p class="handoff-local-status" hidden>
+              <strong>LOCAL DOWNLOAD</strong>
+              <span>Connect to PlaySpace Wi-Fi before scanning.</span>
+            </p>
             <p class="handoff-url" hidden></p>
             <span class="handoff-countdown" hidden>60</span>
           </div>
@@ -230,6 +235,7 @@ function saveDownloadHandoff(expiresAt) {
         posterImageUrl: downloadHandoff.posterImageUrl,
         token: downloadHandoff.token,
         backgroundFrameIndex: downloadHandoff.backgroundFrameIndex,
+        localFallback: downloadHandoff.localFallback,
         scanExpiresAt: downloadHandoff.scanExpiresAt,
         expiresAt,
         stage: downloadHandoff.config.skipWifi ? "download" : "wifi",
@@ -274,6 +280,7 @@ function restoreDownloadHandoff() {
       Number.isInteger(saved.backgroundFrameIndex)
         ? saved.backgroundFrameIndex
         : 0;
+    downloadHandoff.localFallback = saved.localFallback === true;
     downloadHandoff.scanExpiresAt = saved.scanExpiresAt ||
       Date.now() + 60000;
     prepareDownloadHandoffPosterScene();
@@ -478,6 +485,7 @@ async function beginDownloadHandoff(posterSnapshot) {
   downloadHandoff.posterImageUrl = "";
   downloadHandoff.backgroundFrameIndex =
     scene.session.backgroundFrameIndex ?? 0;
+  downloadHandoff.localFallback = false;
   downloadHandoff.scanExpiresAt = 0;
   prepareDownloadHandoffPosterScene();
   downloadHandoff.stage = "preparing";
@@ -514,6 +522,7 @@ async function beginDownloadHandoff(posterSnapshot) {
     if (requestId != downloadHandoff.requestId) return;
     let session = result.session;
     downloadHandoff.config = result.config;
+    downloadHandoff.localFallback = result.localFallback;
     downloadHandoff.downloadUrl = session.downloadUrl;
     downloadHandoff.token = session.token;
     releaseTemporaryPosterImageUrl();
@@ -607,6 +616,7 @@ function showWifiJoinStep() {
   let detail = downloadHandoffElement(".handoff-detail");
   detail.textContent = `Wi-Fi: ${config.wifiName}`;
   downloadHandoffElement(".handoff-url").hidden = true;
+  downloadHandoffElement(".handoff-local-status").hidden = true;
   downloadHandoffElement(".handoff-countdown").hidden = true;
   let button = downloadHandoffElement(".handoff-button");
   button.textContent = "Next";
@@ -627,6 +637,8 @@ function showPosterDownloadStep() {
   downloadHandoffElement(".handoff-scan").hidden = false;
   let detail = downloadHandoffElement(".handoff-detail");
   detail.textContent = "Scan QR\nto save poster!";
+  downloadHandoffElement(".handoff-local-status").hidden =
+    !downloadHandoff.localFallback;
   let url = downloadHandoffElement(".handoff-url");
   url.textContent = downloadHandoff.downloadUrl;
   url.hidden = true;
@@ -648,6 +660,7 @@ function showDownloadHandoffError(error) {
   downloadHandoffElement(".handoff-copy").textContent =
     `Your poster is still available. ${error?.message || "Please try again."}`;
   downloadHandoffElement(".handoff-scan").hidden = true;
+  downloadHandoffElement(".handoff-local-status").hidden = true;
   downloadHandoffElement(".handoff-button").hidden = true;
   downloadHandoffElement(".handoff-secondary").hidden = false;
 }
@@ -660,6 +673,7 @@ function closeDownloadHandoff() {
   downloadHandoff.downloadUrl = "";
   downloadHandoff.posterImageUrl = "";
   downloadHandoff.token = "";
+  downloadHandoff.localFallback = false;
   downloadHandoff.posterSnapshot = null;
   downloadHandoffElement(".handoff-card")?.classList.remove("is-poster-scene");
   downloadHandoff.overlay.hidden = true;

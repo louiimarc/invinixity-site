@@ -483,6 +483,32 @@ canvas {
     white-space: pre-line;
 }
 
+.handoff-local-status {
+    display: grid;
+    gap: 0.28em;
+    width: fit-content;
+    max-width: 17em;
+    margin: 0 0 8%;
+    font-family: ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+    font-size: clamp(9px, 1.8cqw, 14px);
+    font-weight: 750;
+    line-height: 1.12;
+}
+
+.handoff-local-status[hidden] {
+    display: none;
+}
+
+.handoff-local-status strong {
+    width: fit-content;
+    padding: 0.35em 0.62em;
+    border-radius: 999px;
+    background: #4d142f;
+    color: #fff;
+    font-size: 0.9em;
+    letter-spacing: 0.07em;
+}
+
 .handoff-url {
     max-width: 12ch;
     margin: 0;
