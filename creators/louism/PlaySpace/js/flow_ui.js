@@ -35,12 +35,12 @@ const PLAYSPACE_FLOW_BACKGROUND_PATHS = [
 ];
 
 const PLAYSPACE_CARD_BACK_BACKGROUND_PATHS = [
-  "assets/poster/back/backgrounds/background_01.png",
-  "assets/poster/back/backgrounds/background_02.png",
-  "assets/poster/back/backgrounds/background_03.png",
-  "assets/poster/back/backgrounds/background_04.png",
-  "assets/poster/back/backgrounds/background_05.png",
-  "assets/poster/back/backgrounds/background_06.png",
+  "assets/poster/back/backgrounds/background_01.jpg",
+  "assets/poster/back/backgrounds/background_02.jpg",
+  "assets/poster/back/backgrounds/background_03.jpg",
+  "assets/poster/back/backgrounds/background_04.jpg",
+  "assets/poster/back/backgrounds/background_05.jpg",
+  "assets/poster/back/backgrounds/background_06.jpg",
 ];
 
 const PLAYSPACE_CARD_BACK_PATH = "assets/poster/back/card_back_side.png";
