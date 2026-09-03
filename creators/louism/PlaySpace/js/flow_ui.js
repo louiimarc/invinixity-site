@@ -50,6 +50,7 @@ const PLAYSPACE_PALETTE_TO_BACKGROUND = [5, 1, 2, 4, 0, 3];
 scene.flowUi = {
   slices: Object.create(null),
   backgrounds: [],
+  exportBackgrounds: [],
   cardBackBackgrounds: [],
   cardBack: null,
   cardBackLight: null,
@@ -100,7 +101,7 @@ scene.ui.backgroundPicker = {
 
 function preloadFlowUiAssets() {
   let entries = Object.entries(PLAYSPACE_FLOW_SLICE_PATHS);
-  data.amount += entries.length + PLAYSPACE_FLOW_BACKGROUND_PATHS.length +
+  data.amount += entries.length + PLAYSPACE_FLOW_BACKGROUND_PATHS.length * 2 +
     PLAYSPACE_CARD_BACK_BACKGROUND_PATHS.length + 1;
   for (let [key, path] of entries) {
     scene.flowUi.slices[key] = loadImage(
@@ -121,6 +122,18 @@ function preloadFlowUiAssets() {
         loaded();
       },
     )
+  );
+  scene.flowUi.exportBackgrounds = PLAYSPACE_FLOW_BACKGROUND_PATHS.map(
+    (path) => {
+      let asset = new window.Image();
+      asset.onload = loaded;
+      asset.onerror = (error) => {
+        console.warn(`Unable to load export background frame ${path}`, error);
+        loaded();
+      };
+      asset.src = path;
+      return asset;
+    },
   );
   scene.flowUi.cardBackBackgrounds = PLAYSPACE_CARD_BACK_BACKGROUND_PATHS.map(
     (path) =>

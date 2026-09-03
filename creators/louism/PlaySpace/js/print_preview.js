@@ -91,12 +91,290 @@ function clearCardPreviewCaptureBuffer(buffer) {
   );
 }
 
+function posterExportBounds() {
+  let poster = {
+    x: 0,
+    y: 0,
+    width: scene.composition.exportWidth,
+    height: scene.composition.exportHeight,
+  };
+  let cardWidth = poster.width * scene.creationCard.widthRatio;
+  let cardHeight =
+    cardWidth * scene.creationCard.height / scene.creationCard.width;
+  if (cardHeight > poster.height) {
+    cardHeight = poster.height;
+    cardWidth =
+      cardHeight * scene.creationCard.width / scene.creationCard.height;
+  }
+  return {
+    poster,
+    card: {
+      x: (poster.width - cardWidth) / 2,
+      y: (poster.height - cardHeight) / 2,
+      width: cardWidth,
+      height: cardHeight,
+    },
+  };
+}
+
+function mapPosterExportPoint(point, sourceCard, exportCard) {
+  return {
+    x: exportCard.x +
+      ((point.x - sourceCard.x) / max(1, sourceCard.width)) * exportCard.width,
+    y: exportCard.y +
+      ((point.y - sourceCard.y) / max(1, sourceCard.height)) * exportCard.height,
+  };
+}
+
+function clipPosterExportRoundedRect(context, bounds, radius) {
+  let right = bounds.x + bounds.width;
+  let bottom = bounds.y + bounds.height;
+  let corner = min(radius, bounds.width / 2, bounds.height / 2);
+  context.beginPath();
+  context.moveTo(bounds.x + corner, bounds.y);
+  context.lineTo(right - corner, bounds.y);
+  context.quadraticCurveTo(right, bounds.y, right, bounds.y + corner);
+  context.lineTo(right, bottom - corner);
+  context.quadraticCurveTo(right, bottom, right - corner, bottom);
+  context.lineTo(bounds.x + corner, bottom);
+  context.quadraticCurveTo(bounds.x, bottom, bounds.x, bottom - corner);
+  context.lineTo(bounds.x, bounds.y + corner);
+  context.quadraticCurveTo(bounds.x, bounds.y, bounds.x + corner, bounds.y);
+  context.closePath();
+  context.clip();
+}
+
+function drawPosterExportPhoto(target, sourceCard, exportCard, scale) {
+  let frame = scene.session.photoFrame;
+  let photo = scene.session.photo;
+  if (!frame.closed || frame.points.length < 3 || photo == null) return;
+
+  let points = frame.points.map((point) =>
+    mapPosterExportPoint(point, sourceCard, exportCard)
+  );
+  let placement = sessionPhotoPlacement(sourceCard);
+  let mappedPlacement = {
+    x: exportCard.x + (placement.x - sourceCard.x) * scale,
+    y: exportCard.y + (placement.y - sourceCard.y) * scale,
+    width: placement.width * scale,
+    height: placement.height * scale,
+  };
+  let context = target.drawingContext;
+  context.save();
+  context.beginPath();
+  context.moveTo(points[0].x, points[0].y);
+  for (let index = 1; index < points.length; index++) {
+    context.lineTo(points[index].x, points[index].y);
+  }
+  context.closePath();
+  context.clip();
+  context.drawImage(
+    photo.canvas,
+    mappedPlacement.x,
+    mappedPlacement.y,
+    mappedPlacement.width,
+    mappedPlacement.height,
+  );
+  context.restore();
+
+  let primaryColor = sessionPhotoFrameStrokeRgb();
+  let secondaryColor = sessionPhotoFrameSecondaryStrokeRgb();
+  let animatedPoints = frame.points.map((point, index) =>
+    mapPosterExportPoint(
+      animatedSessionPhotoFramePoint(frame.points, index, 17),
+      sourceCard,
+      exportCard,
+    )
+  );
+  let pixelatedPoints = pixelatedSessionPhotoFramePoints(frame.points, 83).map(
+    (point) => mapPosterExportPoint(point, sourceCard, exportCard),
+  );
+  target.push();
+  target.noFill();
+  target.strokeJoin(ROUND);
+  target.strokeCap(ROUND);
+  target.strokeWeight(max(2, 4 * scene.ui.scale * scale));
+  target.stroke(primaryColor[0], primaryColor[1], primaryColor[2], 255);
+  target.beginShape();
+  for (let point of animatedPoints) target.vertex(point.x, point.y);
+  target.endShape();
+  target.stroke(secondaryColor[0], secondaryColor[1], secondaryColor[2], 255);
+  target.beginShape();
+  for (let point of pixelatedPoints) target.vertex(point.x, point.y);
+  target.endShape();
+  target.pop();
+}
+
+function drawPosterExportWord(
+  target,
+  word,
+  path,
+  wordIndex,
+  textSizeValue,
+  sourceCard,
+  exportCard,
+  scale,
+) {
+  let sourcePoints = boilingPath(textRenderBasePath(path));
+  if (sourcePoints.length < 2 || word == "") return;
+  let points = sourcePoints.map((point) =>
+    mapPosterExportPoint(point, sourceCard, exportCard)
+  );
+  let lengths = buildLengths(points);
+  if (lengths.length < 2) return;
+
+  let total = lengths[lengths.length - 1];
+  let glyphGroups = textGlyphGroupsForWord(
+    wordIndex + 1,
+    word.length,
+    textureMixForWordIndex(wordIndex),
+  );
+  let exportTextSize = textSizeValue * scale;
+  let pathEndMargin = min(exportTextSize * 0.35, total * 0.15);
+  for (let index = 0; index < word.length; index++) {
+    let distance = word.length > 1
+      ? map(index, 0, word.length - 1, pathEndMargin, total - pathEndMargin)
+      : total / 2;
+    let point = pointOnPath(points, lengths, distance);
+    let angleStep = max(1, total * 0.002);
+    let before = pointOnPath(points, lengths, max(0, distance - angleStep));
+    let after = pointOnPath(points, lengths, min(total, distance + angleStep));
+    let angle = Math.atan2(after.y - before.y, after.x - before.x) * 180 / PI;
+    let endpointDistance = min(index, word.length - 1 - index);
+    angle *= constrain(map(endpointDistance, 0, 2, 0.35, 1), 0.35, 1);
+
+    target.push();
+    target.translate(point.x, point.y);
+    target.rotate(angle);
+    drawTextGlyphImage(
+      target,
+      word[index],
+      exportTextSize,
+      wordIndex * 1000 + index + 1,
+      glyphGroups[index],
+    );
+    target.pop();
+  }
+}
+
+function drawPosterExportOverlay(target, exportCard) {
+  let state = scene.frameOverlay;
+  if (state.artwork == null || state.textMask == null) return;
+  let sourceInset = 2;
+  target.push();
+  target.noStroke();
+  target.imageMode(CORNER);
+  target.image(
+    state.artwork,
+    exportCard.x,
+    exportCard.y,
+    exportCard.width,
+    exportCard.height,
+    sourceInset,
+    sourceInset,
+    state.artwork.width - sourceInset * 2,
+    state.artwork.height - sourceInset * 2,
+  );
+  let foregroundValue = lerp(29, 255, frameOverlayForegroundTarget());
+  target.tint(foregroundValue);
+  target.image(
+    state.textMask,
+    exportCard.x,
+    exportCard.y,
+    exportCard.width,
+    exportCard.height,
+    sourceInset,
+    sourceInset,
+    state.textMask.width - sourceInset * 2,
+    state.textMask.height - sourceInset * 2,
+  );
+  target.noTint();
+  target.pop();
+}
+
+function renderPosterExport() {
+  let bounds = posterExportBounds();
+  let sourceCard = creationCardBounds();
+  let exportCard = bounds.card;
+  let scale = exportCard.width / max(1, sourceCard.width);
+  let target = createGraphics(bounds.poster.width, bounds.poster.height);
+  target.pixelDensity(1);
+  target.smooth();
+  target.angleMode(DEGREES);
+  target.textFont(scene.text.font);
+  target.textAlign(CENTER, CENTER);
+  target.clear();
+
+  let backgroundIndex = Number.isInteger(scene.session.backgroundFrameIndex)
+    ? scene.session.backgroundFrameIndex
+    : 0;
+  let exportBackground = scene.flowUi.exportBackgrounds?.[backgroundIndex];
+  let backgroundAsset = scene.flowUi.backgrounds[backgroundIndex];
+  if (exportBackground?.complete && exportBackground.naturalWidth > 1) {
+    target.drawingContext.drawImage(
+      exportBackground,
+      0,
+      0,
+      bounds.poster.width,
+      bounds.poster.height,
+    );
+  } else if (backgroundAsset?.width > 1 && backgroundAsset?.height > 1) {
+    target.imageMode(CORNER);
+    target.image(
+      backgroundAsset,
+      0,
+      0,
+      bounds.poster.width,
+      bounds.poster.height,
+    );
+  }
+  target.noStroke();
+  target.fill(0, PLAYSPACE_BACKGROUND_DIM_ALPHA);
+  target.rect(0, 0, bounds.poster.width, bounds.poster.height);
+
+  let context = target.drawingContext;
+  let radius = creationCardCornerRadius(exportCard);
+  context.save();
+  clipPosterExportRoundedRect(context, exportCard, radius);
+  let rgb = sessionBackgroundRgb();
+  target.noStroke();
+  target.fill(rgb[0] * 255, rgb[1] * 255, rgb[2] * 255);
+  target.rect(exportCard.x, exportCard.y, exportCard.width, exportCard.height);
+
+  let creationCard = creationCardBounds();
+  let baseTextSize = min(creationCard.width, creationCard.height) / 4;
+  let order = syncLayerOrder();
+  for (let key of order) {
+    let item = layerItemForKey(key);
+    if (item == null) continue;
+    if (item.type == "photo") {
+      drawPosterExportPhoto(target, sourceCard, exportCard, scale);
+      continue;
+    }
+    let path = textPathForWordIndex(item.wordIndex);
+    if (path == null) continue;
+    drawPosterExportWord(
+      target,
+      textWords()[item.wordIndex],
+      path,
+      item.wordIndex,
+      textSizeForWordIndex(item.wordIndex, baseTextSize),
+      sourceCard,
+      exportCard,
+      scale,
+    );
+  }
+  drawPosterExportOverlay(target, exportCard);
+  context.restore();
+  return target.get();
+}
+
 function captureCardPreviewLayers(liveBaseSnapshot) {
   let state = scene.ui.printPreview;
   let originalWorkspace = scene.workspace;
   let captureBuffer = setupCardPreviewCaptureBuffer();
   let baseSnapshot = null;
-  let posterSnapshot = cardPreviewSnapshot(originalWorkspace, true);
+  let posterSnapshot = renderPosterExport();
   let layers = [];
 
   try {
@@ -114,7 +392,7 @@ function captureCardPreviewLayers(liveBaseSnapshot) {
       bounds.height,
     );
     captureBuffer.pop();
-    baseSnapshot = cardPreviewSnapshot(captureBuffer, true);
+    baseSnapshot = cardPreviewSnapshot(captureBuffer);
 
     let creationCard = creationCardBounds();
     let baseTextSize = min(creationCard.width, creationCard.height) / 4;
