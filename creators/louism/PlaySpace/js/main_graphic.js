@@ -197,7 +197,6 @@ function draw() {
   drawColorPanel(scene.ui.colorPanel.color);
   drawTexturePad();
   drawLayerBar();
-  drawControlSideSwitch();
 
   let fieldGap = scene.ui.textField.gap * scene.ui.scale;
   let doneButton = uiButtonBounds("right");

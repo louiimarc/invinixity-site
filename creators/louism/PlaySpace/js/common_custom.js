@@ -500,13 +500,9 @@ function remapArtworkToComposition(
 }
 
 function loadControlSidePreference() {
-  try {
-    let saved = localStorage.getItem("playspace.control-side.v1");
-    if (["left", "right"].includes(saved)) scene.ui.controlSide = saved;
-    scene.ui.controlSideMix = controlsOnRight() ? 1 : 0;
-  } catch (error) {
-    console.warn("Unable to load control-side preference", error);
-  }
+  scene.ui.controlSide = "right";
+  scene.ui.controlSideMix = 1;
+  scene.ui.controlSideSavePending = false;
 }
 
 function toggleControlSide() {

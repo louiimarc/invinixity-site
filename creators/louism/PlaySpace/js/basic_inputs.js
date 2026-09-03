@@ -219,7 +219,6 @@ function uiButtonAtPointer() {
   }
 
   if (scene.text.edit) {
-    if (scene.gui.sideSwitch.hitTest()) return "sideSwitch";
     let colorPanelTarget = colorPanelTargetAtPointer();
     if (colorPanelTarget != null) return colorPanelTarget;
     let layerTarget = layerBarTargetAtPointer();
@@ -439,7 +438,6 @@ function endUiButtonPress() {
       "printOk",
       "edit",
       "done",
-      "sideSwitch",
       "backgroundCancel",
       "backgroundNext",
     ].includes(
@@ -491,8 +489,6 @@ function endUiButtonPress() {
   } else if (releaseTarget == "done") {
     setTextEdit(false);
     openBackgroundFramePicker();
-  } else if (releaseTarget == "sideSwitch") {
-    toggleControlSide();
   } else if (releaseTarget == "backgroundCancel") {
     closeBackgroundFramePicker();
     setTextEdit(true);
