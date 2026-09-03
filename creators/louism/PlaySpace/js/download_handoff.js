@@ -5,6 +5,7 @@ var downloadHandoff = {
   config: null,
   downloadUrl: "",
   posterImageUrl: "",
+  temporaryPosterImageUrl: "",
   token: "",
   posterSnapshot: null,
   backgroundFrameIndex: 0,
@@ -26,7 +27,7 @@ var downloadHandoff = {
   },
 };
 
-const PLAYSPACE_CLOUD_HANDOFF_TIMEOUT = 15000;
+const PLAYSPACE_CLOUD_HANDOFF_TIMEOUT = 30000;
 const PLAYSPACE_LOCAL_HANDOFF_TIMEOUT = 12000;
 
 function downloadHandoffElement(selector) {
@@ -341,20 +342,26 @@ async function setDownloadHandoffQr(image, text) {
   }
 }
 
-function dataUrlBlob(dataUrl) {
-  let [header, encoded] = dataUrl.split(",", 2);
-  let mimeType = header.match(/^data:([^;]+)/)?.[1] || "image/png";
-  let binary = atob(encoded);
-  let bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index++) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return new Blob([bytes], { type: mimeType });
+function releaseTemporaryPosterImageUrl() {
+  if (downloadHandoff.temporaryPosterImageUrl == "") return;
+  URL.revokeObjectURL(downloadHandoff.temporaryPosterImageUrl);
+  downloadHandoff.temporaryPosterImageUrl = "";
 }
 
 function cardPreviewPosterBlob(snapshot) {
-  if (snapshot == null) throw new Error("The poster preview is unavailable");
-  return dataUrlBlob(snapshot.canvas.toDataURL("image/png"));
+  return new Promise((resolve, reject) => {
+    if (snapshot?.canvas?.toBlob == null) {
+      reject(new Error("The poster preview is unavailable"));
+      return;
+    }
+    snapshot.canvas.toBlob((blob) => {
+      if (blob == null || blob.size == 0) {
+        reject(new Error("Unable to encode the finished poster"));
+        return;
+      }
+      resolve(blob);
+    }, "image/png");
+  });
 }
 
 function downloadHandoffTimeoutError(label) {
@@ -467,9 +474,8 @@ async function beginDownloadHandoff(posterSnapshot) {
   let requestId = ++downloadHandoff.requestId;
   setupDownloadHandoff();
   downloadHandoff.posterSnapshot = posterSnapshot;
-  downloadHandoff.posterImageUrl = posterSnapshot?.canvas?.toDataURL(
-    "image/png",
-  ) || "";
+  releaseTemporaryPosterImageUrl();
+  downloadHandoff.posterImageUrl = "";
   downloadHandoff.backgroundFrameIndex =
     scene.session.backgroundFrameIndex ?? 0;
   downloadHandoff.scanExpiresAt = 0;
@@ -488,7 +494,12 @@ async function beginDownloadHandoff(posterSnapshot) {
   setDownloadHandoffProgress(1);
 
   try {
-    let posterBlob = cardPreviewPosterBlob(posterSnapshot);
+    let posterBlob = await cardPreviewPosterBlob(posterSnapshot);
+    if (requestId != downloadHandoff.requestId) return;
+    downloadHandoff.temporaryPosterImageUrl = URL.createObjectURL(posterBlob);
+    downloadHandoff.posterImageUrl =
+      downloadHandoff.temporaryPosterImageUrl;
+    prepareDownloadHandoffPosterScene();
     let result;
     try {
       result = await requestCloudDownloadSession(posterBlob);
@@ -505,6 +516,7 @@ async function beginDownloadHandoff(posterSnapshot) {
     downloadHandoff.config = result.config;
     downloadHandoff.downloadUrl = session.downloadUrl;
     downloadHandoff.token = session.token;
+    releaseTemporaryPosterImageUrl();
     downloadHandoff.posterImageUrl = session.posterImageUrl ||
       `${new URL(session.downloadUrl).origin}/poster/${session.token}.png`;
     downloadHandoff.scanExpiresAt = Date.now() + 60000;
@@ -643,6 +655,7 @@ function showDownloadHandoffError(error) {
 function closeDownloadHandoff() {
   downloadHandoff.requestId++;
   stopDownloadScanCountdown();
+  releaseTemporaryPosterImageUrl();
   downloadHandoff.stage = "closed";
   downloadHandoff.downloadUrl = "";
   downloadHandoff.posterImageUrl = "";
