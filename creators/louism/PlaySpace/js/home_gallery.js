@@ -23,6 +23,11 @@ scene.homeGallery = {
     draftHiddenIds: new Set(),
     element: null,
   },
+  rescan: {
+    element: null,
+    lastTapAt: 0,
+    lastTapId: "",
+  },
   exampleRequestId: 0,
   position: 0,
   targetPosition: 0,
@@ -297,6 +302,79 @@ function toggleHomeGalleryModeration() {
     : openHomeGalleryModeration();
 }
 
+function closeHomeGalleryRescan() {
+  let state = scene.homeGallery.rescan;
+  state.element?.remove();
+  state.element = null;
+  state.lastTapAt = 0;
+  state.lastTapId = "";
+}
+
+function openHomeGalleryRescan(card) {
+  if (card == null || scene.session.mode != "idle") return false;
+  closeHomeGalleryRescan();
+
+  let overlay = document.createElement("section");
+  overlay.className = "home-rescan";
+  overlay.setAttribute("aria-label", "Rescan a saved PlaySpace poster");
+  overlay.innerHTML = `
+    <div class="home-rescan__card" role="dialog" aria-modal="true">
+      <h1>Scan to save this poster again!</h1>
+      <div class="home-rescan__content">
+        <img class="home-rescan__poster" alt="Saved PlaySpace poster">
+        <div class="home-rescan__qr-wrap">
+          <img class="home-rescan__qr" alt="QR code for this saved poster">
+          <p>Open your camera and scan</p>
+        </div>
+      </div>
+      <button class="home-rescan__close" type="button">Close</button>
+    </div>
+  `;
+  for (let eventName of [
+    "pointerdown",
+    "pointermove",
+    "pointerup",
+    "pointercancel",
+    "touchstart",
+    "touchmove",
+    "touchend",
+    "touchcancel",
+    "mousedown",
+    "mousemove",
+    "mouseup",
+    "click",
+  ]) {
+    overlay.addEventListener(eventName, (event) => event.stopPropagation());
+  }
+  overlay.querySelector(".home-rescan__poster").src = card.url;
+  setDownloadHandoffQr(
+    overlay.querySelector(".home-rescan__qr"),
+    card.url,
+  );
+  overlay.querySelector(".home-rescan__close").addEventListener(
+    "click",
+    closeHomeGalleryRescan,
+  );
+  document.body.append(overlay);
+  scene.homeGallery.rescan.element = overlay;
+  return true;
+}
+
+function registerHomeGalleryCenterTap(card) {
+  if (card == null) return false;
+  let state = scene.homeGallery.rescan;
+  let now = millis();
+  let id = homeExampleId(card.url);
+  let isDoubleTap =
+    state.lastTapId == id && now - state.lastTapAt <= 450;
+  state.lastTapAt = now;
+  state.lastTapId = id;
+  if (!isDoubleTap) return false;
+  state.lastTapAt = 0;
+  state.lastTapId = "";
+  return openHomeGalleryRescan(card);
+}
+
 async function refreshHomeExamples() {
   let state = scene.homeGallery;
   let requestId = ++state.exampleRequestId;
@@ -503,7 +581,7 @@ function pointInsideHomeGallery(x, y) {
 
 function beginHomeGalleryGesture() {
   let state = scene.homeGallery;
-  if (homeGalleryDisplayCards().length < 2) return false;
+  if (homeGalleryDisplayCards().length < 1) return false;
   if (!pointInsideHomeGallery(mouseX, mouseY)) return false;
   state.drag.active = true;
   state.drag.moved = false;
@@ -544,6 +622,18 @@ function endHomeGalleryGesture() {
     let tapDirection = abs(centeredX) < layout.cardWidth * 0.34
       ? 0
       : Math.sign(centeredX);
+    if (tapDirection == 0) {
+      let cards = homeGalleryDisplayCards();
+      let centerIndex = ((round(state.position) % cards.length) +
+        cards.length) % cards.length;
+      if (registerHomeGalleryCenterTap(cards[centerIndex])) {
+        state.lastAutoAt = millis();
+        return true;
+      }
+    } else {
+      state.rescan.lastTapAt = 0;
+      state.rescan.lastTapId = "";
+    }
     state.targetPosition = round(state.position) + tapDirection;
   }
   state.lastAutoAt = millis();
@@ -562,6 +652,7 @@ function drawHomeGallery(target = scene.workspace) {
   if (readyCards.length > 0) {
     if (
       !state.drag.active &&
+      state.rescan.element == null &&
       millis() - state.lastAutoAt >= PLAYSPACE_HOME_GALLERY_INTERVAL
     ) {
       state.targetPosition = round(state.targetPosition) + 1;

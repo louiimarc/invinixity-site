@@ -1,6 +1,11 @@
 function keyPressed(event) {
   userStartAudio();
 
+  if (scene.homeGallery.rescan.element != null) {
+    if (keyCode === ESCAPE) closeHomeGalleryRescan();
+    return false;
+  }
+
   if (key === "∑") {
     if (!event?.repeat) toggleHomeGalleryModeration();
     return false;
