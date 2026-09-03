@@ -407,7 +407,7 @@ function nearestBackgroundFramePosition(index, position) {
 
 function captureBackgroundPickerCard() {
   let state = scene.ui.backgroundPicker;
-  let posterSnapshot = cardPreviewSnapshot(scene.workspace, true);
+  let posterSnapshot = cardPreviewSnapshot(scene.workspace);
   let cardWidth = posterSnapshot.width * scene.creationCard.widthRatio;
   let cardHeight = cardWidth * scene.creationCard.height /
     scene.creationCard.width;
@@ -434,15 +434,16 @@ function captureBackgroundPickerCard() {
   let radius = min(rawSnapshot.width, rawSnapshot.height) *
     scene.creationCard.cornerRadius;
   context.save();
-  context.beginPath();
-  context.roundRect(
-    0,
-    0,
-    rawSnapshot.width,
-    rawSnapshot.height,
+  clipPosterExportRoundedRect(
+    context,
+    {
+      x: 0,
+      y: 0,
+      width: rawSnapshot.width,
+      height: rawSnapshot.height,
+    },
     radius,
   );
-  context.clip();
   roundedBuffer.imageMode(CORNER);
   roundedBuffer.image(
     rawSnapshot,
