@@ -12,14 +12,19 @@ function playSpaceRunsOnLocalKioskHost() {
 }
 
 function playSpaceLocalDeviceId() {
+  let pathNumber = window.location.pathname.match(
+    /^\/device\/([12])(?:\/|$)/,
+  )?.[1];
+  let pathDevice = pathNumber == null ? "" : `ipad-${pathNumber}`;
   let requested = new URLSearchParams(window.location.search).get("device");
-  if (/^ipad-[12]$/.test(requested || "")) {
+  let explicitDevice = pathDevice || requested;
+  if (/^ipad-[12]$/.test(explicitDevice || "")) {
     try {
-      localStorage.setItem(PLAYSPACE_LOCAL_DEVICE_KEY, requested);
+      localStorage.setItem(PLAYSPACE_LOCAL_DEVICE_KEY, explicitDevice);
     } catch (error) {
       console.warn("Unable to remember PlaySpace device identity", error);
     }
-    return requested;
+    return explicitDevice;
   }
   try {
     let saved = localStorage.getItem(PLAYSPACE_LOCAL_DEVICE_KEY);

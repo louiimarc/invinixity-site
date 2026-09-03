@@ -115,7 +115,7 @@ async function renderJoinLinks() {
 
   let alternatives = (config.fallbackOrigins || []).map((origin) => {
     let paragraph = document.createElement("p");
-    paragraph.textContent = `${origin}/?device=ipad-1  ·  ${origin}/?device=ipad-2`;
+    paragraph.textContent = `${origin}/device/1/  ·  ${origin}/device/2/`;
     return paragraph;
   });
   $("fallback-origins").replaceChildren(...alternatives);

@@ -67,7 +67,7 @@ function createLocalControl({ port, localHostname, protocol = "http", sendJson }
   let kioskLinks = [1, 2].map((number) => ({
     deviceId: `ipad-${number}`,
     label: `iPad ${number}`,
-    url: `${primaryOrigin}/?device=ipad-${number}`,
+    url: `${primaryOrigin}/device/${number}/`,
   }));
 
   function deviceSnapshot() {

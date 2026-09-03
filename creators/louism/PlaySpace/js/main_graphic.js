@@ -98,7 +98,9 @@ function draw() {
   inout.audio.update();
   inout.audio.ui?.update();
   let previewBaseSnapshot = scene.ui.printPreview.pending
-    ? cardPreviewSnapshot(scene.workspace)
+    ? scene.ui.printPreview.autoDownload
+      ? scene.workspace
+      : cardPreviewSnapshot(scene.workspace)
     : null;
 
   // scene.shader.setUniform("spectrum", inout.audio.spectrum.texture);

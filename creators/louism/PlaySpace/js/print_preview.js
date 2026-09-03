@@ -34,10 +34,14 @@ function resetPrintPreviewState() {
 
 function rejectPrintPreviewCapture(message) {
   console.warn(message);
+  let shouldRestoreBackgroundPicker =
+    scene.ui.printPreview.autoDownload &&
+    scene.session.mode == "active";
   scene.ui.printPreview.pending = false;
   scene.ui.printPreview.autoDownload = false;
   scene.ui.printPreview.sessionGeneration = null;
   scene.ui.backgroundPicker.finalizing = false;
+  if (shouldRestoreBackgroundPicker) openBackgroundFramePicker();
 }
 
 function cardPreviewSnapshot(image, fullResolution = false) {
@@ -366,7 +370,9 @@ function renderPosterExport() {
   }
   drawPosterExportOverlay(target, exportCard);
   context.restore();
-  return target.get();
+  let snapshot = target.get();
+  target.remove();
+  return snapshot;
 }
 
 function captureCardPreviewLayers(liveBaseSnapshot) {
@@ -374,10 +380,11 @@ function captureCardPreviewLayers(liveBaseSnapshot) {
   let originalWorkspace = scene.workspace;
   let captureBuffer = setupCardPreviewCaptureBuffer();
   let baseSnapshot = null;
-  let posterSnapshot = renderPosterExport();
+  let posterSnapshot = null;
   let layers = [];
 
   try {
+    posterSnapshot = renderPosterExport();
     scene.workspace = captureBuffer;
     clearCardPreviewCaptureBuffer(captureBuffer);
     captureBuffer.push();
@@ -430,6 +437,7 @@ function captureCardPreviewLayers(liveBaseSnapshot) {
     });
   } finally {
     scene.workspace = originalWorkspace;
+    captureBuffer.remove();
   }
 
   state.snapshot = baseSnapshot;
@@ -455,7 +463,13 @@ function capturePrintPreview(liveBaseSnapshot) {
   }
 
   try {
-    captureCardPreviewLayers(liveBaseSnapshot);
+    if (state.autoDownload) {
+      state.posterSnapshot = renderPosterExport();
+      state.snapshot = null;
+      state.layers = [];
+    } else {
+      captureCardPreviewLayers(liveBaseSnapshot);
+    }
   } catch (error) {
     rejectPrintPreviewCapture("Unable to capture the final PlaySpace poster.");
     console.error(error);
@@ -487,7 +501,9 @@ function capturePrintPreview(liveBaseSnapshot) {
           setTextEdit(false);
         });
     } else {
-      beginDownloadHandoff(state.posterSnapshot);
+      let completedPosterSnapshot = state.posterSnapshot;
+      state.posterSnapshot = null;
+      beginDownloadHandoff(completedPosterSnapshot);
       scene.ui.backgroundPicker.finalizing = false;
     }
     return;

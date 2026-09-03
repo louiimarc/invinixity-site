@@ -331,19 +331,23 @@ async function handleRequest(request, response) {
     return;
   }
 
+  let staticPathname = url.pathname.replace(
+    /^\/device\/[12](?=\/|$)/,
+    "",
+  ) || "/";
   let filePath;
-  if (url.pathname == "/vendor/p5.js") {
+  if (staticPathname == "/vendor/p5.js") {
     filePath = path.join(root, "node_modules/p5/lib/p5.min.js");
-  } else if (url.pathname == "/vendor/p5.sound.js") {
+  } else if (staticPathname == "/vendor/p5.sound.js") {
     filePath = path.join(root, "node_modules/p5/lib/addons/p5.sound.min.js");
   } else {
     let relative;
     try {
-      relative = url.pathname == "/"
+      relative = staticPathname == "/"
         ? "index.html"
-        : ["/control", "/control/"].includes(url.pathname)
+        : ["/control", "/control/"].includes(staticPathname)
           ? "control/index.html"
-        : decodeURIComponent(url.pathname.slice(1));
+        : decodeURIComponent(staticPathname.slice(1));
     } catch (error) {
       send(response, 400, "Invalid URL");
       return;
@@ -362,9 +366,9 @@ async function handleRequest(request, response) {
     }
     let contentType = mimeTypes[path.extname(filePath).toLowerCase()] ||
       "application/octet-stream";
-    let cacheControl = url.pathname.startsWith("/assets/") ||
-        url.pathname.startsWith("/shader/") ||
-        url.pathname.startsWith("/vendor/")
+    let cacheControl = staticPathname.startsWith("/assets/") ||
+        staticPathname.startsWith("/shader/") ||
+        staticPathname.startsWith("/vendor/")
       ? "public, max-age=3600"
       : "no-cache";
     response.writeHead(200, {

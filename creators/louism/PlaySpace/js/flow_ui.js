@@ -454,6 +454,7 @@ function captureBackgroundPickerCard() {
   );
   context.restore();
   let snapshot = roundedBuffer.get();
+  roundedBuffer.remove();
   state.cardSnapshot = snapshot;
 }
 

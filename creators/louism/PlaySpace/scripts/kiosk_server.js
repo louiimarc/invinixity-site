@@ -481,13 +481,17 @@ async function handleRequest(request, response) {
     return;
   }
 
+  let staticPathname = url.pathname.replace(
+    /^\/device\/[12](?=\/|$)/,
+    "",
+  ) || "/";
   let relative;
   try {
-    relative = url.pathname == "/"
+    relative = staticPathname == "/"
       ? "index.html"
-      : ["/control", "/control/"].includes(url.pathname)
+      : ["/control", "/control/"].includes(staticPathname)
         ? "control/index.html"
-      : decodeURIComponent(url.pathname.slice(1));
+      : decodeURIComponent(staticPathname.slice(1));
   } catch (error) {
     send(response, 400, "Invalid URL");
     return;
