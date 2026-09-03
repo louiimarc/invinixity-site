@@ -530,16 +530,20 @@ canvas {
     inset: 0;
     display: grid;
     place-items: center;
-    padding: max(24px, env(safe-area-inset-top)) 24px
-        max(24px, env(safe-area-inset-bottom));
+    padding:
+        max(clamp(24px, 5vw, 56px), env(safe-area-inset-top))
+        clamp(24px, 5vw, 56px)
+        max(clamp(24px, 5vw, 56px), env(safe-area-inset-bottom));
     background: rgba(29, 29, 29, 0.62);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
 }
 
 .home-rescan__card {
-    width: min(92vw, 760px);
-    max-height: 92vh;
+    box-sizing: border-box;
+    width: min(88vw, 720px);
+    max-width: calc(100vw - clamp(48px, 10vw, 112px));
+    max-height: calc(100dvh - clamp(48px, 10vw, 112px));
     padding: clamp(24px, 4vw, 42px);
     overflow: auto;
     border: 1px solid rgba(255, 255, 255, 0.72);
@@ -559,7 +563,7 @@ canvas {
 
 .home-rescan__content {
     display: grid;
-    grid-template-columns: minmax(130px, 0.8fr) minmax(180px, 1fr);
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
     align-items: center;
     gap: clamp(22px, 5vw, 54px);
 }
@@ -610,7 +614,7 @@ canvas {
 
 @media (orientation: portrait) and (max-width: 700px) {
     .home-rescan__content {
-        grid-template-columns: minmax(100px, 0.72fr) minmax(150px, 1fr);
+        grid-template-columns: minmax(0, 0.72fr) minmax(0, 1fr);
     }
 }
 
