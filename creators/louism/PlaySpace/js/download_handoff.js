@@ -29,6 +29,7 @@ var downloadHandoff = {
 };
 
 const PLAYSPACE_CLOUD_HANDOFF_TIMEOUT = 30000;
+const PLAYSPACE_CLOUD_PROBE_TIMEOUT = 3500;
 const PLAYSPACE_LOCAL_HANDOFF_TIMEOUT = 12000;
 
 function downloadHandoffElement(selector) {
@@ -408,18 +409,25 @@ async function fetchDownloadHandoffWithTimeout(
 }
 
 async function requestCloudDownloadSession(posterBlob) {
+  let configResponse;
+  try {
+    configResponse = await fetchDownloadHandoffWithTimeout(
+      playSpaceApiUrl("/api/config"),
+      { cache: "no-store" },
+      PLAYSPACE_CLOUD_PROBE_TIMEOUT,
+      "Online download check",
+    );
+  } catch (error) {
+    throw normalizeCloudDownloadError(error);
+  }
+  if (!configResponse.ok) throw new Error("Download service unavailable");
+  let config = await configResponse.json();
   let controller = new AbortController();
   let timer = window.setTimeout(
     () => controller.abort(),
     PLAYSPACE_CLOUD_HANDOFF_TIMEOUT,
   );
   try {
-    let configResponse = await fetch(playSpaceApiUrl("/api/config"), {
-      cache: "no-store",
-      signal: controller.signal,
-    });
-    if (!configResponse.ok) throw new Error("Download service unavailable");
-    let config = await configResponse.json();
     let posterResponse = await fetch(playSpaceApiUrl("/api/posters"), {
       method: "POST",
       headers: { "Content-Type": "image/png" },
@@ -473,6 +481,28 @@ async function requestLocalDownloadSession(posterBlob) {
   };
 }
 
+async function cacheCloudPosterOnKiosk(posterBlob, session) {
+  if (!playSpaceRunsOnLocalKioskHost()) return;
+  let parameters = new URLSearchParams({
+    id: session.token,
+    exampleUrl: session.exampleUrl,
+    downloadUrl: session.downloadUrl,
+    posterImageUrl: session.posterImageUrl,
+    expiresAt: String(session.expiresAt || ""),
+  });
+  let response = await fetchDownloadHandoffWithTimeout(
+    `${window.location.origin}/api/gallery-cache?${parameters}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "image/png" },
+      body: posterBlob,
+    },
+    PLAYSPACE_LOCAL_HANDOFF_TIMEOUT,
+    "Caching this poster on the kiosk Mac",
+  );
+  if (!response.ok) throw new Error("Unable to cache poster on this Mac");
+}
+
 async function beginDownloadHandoff(posterSnapshot) {
   if (posterSnapshot == null) {
     console.error("Refused to begin a download without a finished poster.");
@@ -523,6 +553,13 @@ async function beginDownloadHandoff(posterSnapshot) {
     let session = result.session;
     downloadHandoff.config = result.config;
     downloadHandoff.localFallback = result.localFallback;
+    if (!result.localFallback) {
+      try {
+        await cacheCloudPosterOnKiosk(posterBlob, session);
+      } catch (cacheError) {
+        console.warn("Unable to cache cloud poster on this Mac", cacheError);
+      }
+    }
     downloadHandoff.downloadUrl = session.downloadUrl;
     downloadHandoff.token = session.token;
     releaseTemporaryPosterImageUrl();
@@ -530,7 +567,7 @@ async function beginDownloadHandoff(posterSnapshot) {
       `${new URL(session.downloadUrl).origin}/poster/${session.token}.png`;
     downloadHandoff.scanExpiresAt = Date.now() + 60000;
     prepareDownloadHandoffPosterScene();
-    if (!result.localFallback) refreshHomeExamples();
+    refreshHomeExamples();
     saveDownloadHandoff(session.expiresAt);
     if (downloadHandoff.config.skipWifi) showPosterDownloadStep();
     else showWifiJoinStep();

@@ -14,9 +14,13 @@ const expiryMinutes = Number.parseInt(
   10,
 );
 const expiryMs = expiryMinutes * 60 * 1000;
+const offlineQueueExpiryMs = 24 * 60 * 60 * 1000;
+const maximumLocalGalleryExamples = 50;
 const maximumPosterBytes = 20 * 1024 * 1024;
 const downloadDirectory = path.join(root, ".playspace-downloads");
+const offlineQueueDirectory = path.join(root, ".playspace-offline-queue");
 fs.mkdirSync(downloadDirectory, { recursive: true });
+fs.mkdirSync(offlineQueueDirectory, { recursive: true });
 const posterSessions = new Map();
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -61,6 +65,99 @@ function send(response, status, body, headers = {}) {
 function sendJson(response, status, body) {
   send(response, status, JSON.stringify(body), {
     "Content-Type": "application/json; charset=utf-8",
+  });
+}
+
+function validOfflinePosterId(value) {
+  return /^[A-Za-z0-9_-]+$/.test(value || "");
+}
+
+function offlinePosterImagePath(id) {
+  return path.join(offlineQueueDirectory, `${id}.png`);
+}
+
+function offlinePosterMetadataPath(id) {
+  return path.join(offlineQueueDirectory, `${id}.json`);
+}
+
+async function readOfflinePoster(id) {
+  if (!validOfflinePosterId(id)) return null;
+  try {
+    let value = JSON.parse(
+      await fs.promises.readFile(offlinePosterMetadataPath(id), "utf8"),
+    );
+    return value?.id == id ? value : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function writeOfflinePoster(value) {
+  let destination = offlinePosterMetadataPath(value.id);
+  let temporary = `${destination}.tmp`;
+  await fs.promises.writeFile(temporary, `${JSON.stringify(value)}\n`);
+  await fs.promises.rename(temporary, destination);
+}
+
+async function deleteOfflinePoster(value) {
+  await Promise.allSettled([
+    fs.promises.unlink(offlinePosterMetadataPath(value.id)),
+    fs.promises.unlink(offlinePosterImagePath(value.id)),
+  ]);
+}
+
+async function offlinePosters() {
+  let filenames = await fs.promises.readdir(offlineQueueDirectory);
+  let records = await Promise.all(
+    filenames
+      .filter((filename) => filename.endsWith(".json"))
+      .map((filename) => readOfflinePoster(filename.slice(0, -5))),
+  );
+  let active = [];
+  for (let record of records) {
+    if (record == null) continue;
+    if (!(record.queueExpiresAt > Date.now())) {
+      await deleteOfflinePoster(record);
+      continue;
+    }
+    active.push(record);
+  }
+  return active.sort((left, right) => right.createdAt - left.createdAt);
+}
+
+function offlinePosterGalleryEntry(record) {
+  let synced = record.status == "synced" && record.cloudExampleUrl;
+  return {
+    id: record.id,
+    url: `${publicOrigin}/offline-poster/${record.id}.png`,
+    sourceUrl: synced ? record.cloudExampleUrl : "",
+    downloadUrl: synced
+      ? record.cloudDownloadUrl
+      : record.localDownloadUrl,
+    pendingUpload: !synced,
+  };
+}
+
+function readJsonBody(request, maximumBytes = 16 * 1024) {
+  return new Promise((resolve, reject) => {
+    let chunks = [];
+    let size = 0;
+    request.on("data", (chunk) => {
+      size += chunk.length;
+      if (size <= maximumBytes) chunks.push(chunk);
+    });
+    request.on("end", () => {
+      if (size > maximumBytes) {
+        reject(new Error("JSON request is too large"));
+        return;
+      }
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}"));
+      } catch (error) {
+        reject(new Error("Invalid JSON"));
+      }
+    });
+    request.on("error", reject);
   });
 }
 
@@ -147,6 +244,131 @@ async function handleRequest(request, response) {
   let url = new URL(request.url, "http://localhost");
   if (await localControl.handle(request, response, url)) return;
 
+  if (request.method == "GET" && url.pathname == "/api/offline-posters") {
+    let records = await offlinePosters();
+    sendJson(response, 200, {
+      examples: records
+        .slice(0, maximumLocalGalleryExamples)
+        .map(offlinePosterGalleryEntry),
+      pendingUploads: records
+        .filter((record) => record.status != "synced")
+        .map(offlinePosterGalleryEntry),
+    });
+    return;
+  }
+
+  if (request.method == "POST" && url.pathname == "/api/gallery-cache") {
+    let id = url.searchParams.get("id") || "";
+    let cloudExampleUrl = url.searchParams.get("exampleUrl") || "";
+    let cloudDownloadUrl = url.searchParams.get("downloadUrl") || "";
+    let cloudPosterImageUrl = url.searchParams.get("posterImageUrl") || "";
+    let cloudUrls = [
+      cloudExampleUrl,
+      cloudDownloadUrl,
+      cloudPosterImageUrl,
+    ];
+    if (!validOfflinePosterId(id) || !cloudUrls.every((value) => {
+      try {
+        return new URL(value).protocol == "https:";
+      } catch (error) {
+        return false;
+      }
+    })) {
+      sendJson(response, 400, { error: "Invalid gallery cache metadata" });
+      return;
+    }
+    let image = await readPosterImage(request);
+    if (image == null) {
+      sendJson(response, 415, {
+        error: "Gallery poster must be a PNG smaller than 20 MB",
+      });
+      return;
+    }
+    await fs.promises.writeFile(offlinePosterImagePath(id), image);
+    let record = {
+      id,
+      status: "synced",
+      claimUntil: 0,
+      createdAt: Date.now(),
+      queueExpiresAt: Date.now() + offlineQueueExpiryMs,
+      localDownloadUrl: "",
+      cloudExampleUrl,
+      cloudDownloadUrl,
+      cloudPosterImageUrl,
+      cloudExpiresAt: Number(url.searchParams.get("expiresAt")) || null,
+    };
+    await writeOfflinePoster(record);
+    sendJson(response, 201, offlinePosterGalleryEntry(record));
+    return;
+  }
+
+  let offlineActionMatch = url.pathname.match(
+    /^\/api\/offline-posters\/([A-Za-z0-9_-]+)\/(claim|release|synced)$/,
+  );
+  if (request.method == "POST" && offlineActionMatch != null) {
+    let id = offlineActionMatch[1];
+    let action = offlineActionMatch[2];
+    let record = await readOfflinePoster(id);
+    if (record == null || !(record.queueExpiresAt > Date.now())) {
+      sendJson(response, 404, { error: "Offline poster not found" });
+      return;
+    }
+    if (action == "claim") {
+      if (record.status == "synced") {
+        sendJson(response, 409, { error: "Poster is already online" });
+        return;
+      }
+      if (record.claimUntil > Date.now()) {
+        sendJson(response, 409, { error: "Poster upload is already claimed" });
+        return;
+      }
+      record.claimUntil = Date.now() + 60 * 1000;
+      await writeOfflinePoster(record);
+      sendJson(response, 200, {
+        id,
+        uploadUrl: `${publicOrigin}/offline-poster/${id}.png`,
+      });
+      return;
+    }
+    if (action == "release") {
+      record.claimUntil = 0;
+      await writeOfflinePoster(record);
+      sendJson(response, 200, { ok: true });
+      return;
+    }
+    let payload;
+    try {
+      payload = await readJsonBody(request);
+    } catch (error) {
+      sendJson(response, 400, { error: error.message });
+      return;
+    }
+    let cloudUrls = [
+      payload.exampleUrl,
+      payload.downloadUrl,
+      payload.posterImageUrl,
+    ];
+    if (!cloudUrls.every((value) => {
+      try {
+        return new URL(value).protocol == "https:";
+      } catch (error) {
+        return false;
+      }
+    })) {
+      sendJson(response, 400, { error: "Invalid cloud poster URLs" });
+      return;
+    }
+    record.status = "synced";
+    record.claimUntil = 0;
+    record.cloudExampleUrl = payload.exampleUrl;
+    record.cloudDownloadUrl = payload.downloadUrl;
+    record.cloudPosterImageUrl = payload.posterImageUrl;
+    record.cloudExpiresAt = payload.expiresAt || null;
+    await writeOfflinePoster(record);
+    sendJson(response, 200, offlinePosterGalleryEntry(record));
+    return;
+  }
+
   if (request.method == "POST" && url.pathname == "/api/posters") {
     let image = await readPosterImage(request);
     if (image == null) {
@@ -159,6 +381,16 @@ async function handleRequest(request, response) {
     let file = path.join(downloadDirectory, `${token}.png`);
     let expiresAt = Date.now() + expiryMs;
     await fs.promises.writeFile(file, image);
+    await fs.promises.writeFile(offlinePosterImagePath(token), image);
+    let offlineRecord = {
+      id: token,
+      status: "pending",
+      claimUntil: 0,
+      createdAt: Date.now(),
+      queueExpiresAt: Date.now() + offlineQueueExpiryMs,
+      localDownloadUrl: `${publicOrigin}/d/${token}`,
+    };
+    await writeOfflinePoster(offlineRecord);
     posterSessions.set(token, { file, expiresAt });
     sendJson(response, 201, {
       token,
@@ -167,6 +399,39 @@ async function handleRequest(request, response) {
       exampleUrl: "",
       expiresAt,
     });
+    return;
+  }
+
+  let offlineImageMatch = url.pathname.match(
+    /^\/offline-poster\/([A-Za-z0-9_-]+)\.png$/,
+  );
+  if ((request.method == "GET" || request.method == "HEAD") &&
+      offlineImageMatch != null) {
+    let record = await readOfflinePoster(offlineImageMatch[1]);
+    let file = offlinePosterImagePath(offlineImageMatch[1]);
+    if (record == null || !(record.queueExpiresAt > Date.now())) {
+      send(response, 404, "Offline poster expired", {
+        "Content-Type": "text/plain; charset=utf-8",
+      });
+      return;
+    }
+    let stat;
+    try {
+      stat = await fs.promises.stat(file);
+    } catch (error) {
+      send(response, 404, "Offline poster unavailable", {
+        "Content-Type": "text/plain; charset=utf-8",
+      });
+      return;
+    }
+    response.writeHead(200, {
+      "Cache-Control": "private, max-age=60",
+      "Content-Length": stat.size,
+      "Content-Type": "image/png",
+      "X-Content-Type-Options": "nosniff",
+    });
+    if (request.method == "HEAD") response.end();
+    else fs.createReadStream(file).pipe(response);
     return;
   }
 
@@ -286,4 +551,7 @@ setInterval(() => {
   for (let [token, session] of posterSessions) {
     if (Date.now() >= session.expiresAt) expirePoster(token, session);
   }
+  offlinePosters().catch((error) => {
+    console.warn("Unable to clean the offline poster queue", error);
+  });
 }, 60 * 1000).unref();

@@ -1,4 +1,6 @@
 const PLAYSPACE_HOME_GALLERY_INTERVAL = 5000;
+const PLAYSPACE_HOME_GALLERY_REFRESH_INTERVAL = 15000;
+const PLAYSPACE_HOME_GALLERY_REQUEST_TIMEOUT = 8000;
 const PLAYSPACE_HIDDEN_HOME_EXAMPLES_KEY =
   "playspace.hidden-home-examples.v1";
 
@@ -29,6 +31,8 @@ scene.homeGallery = {
     lastTapId: "",
   },
   exampleRequestId: 0,
+  refreshTimer: null,
+  offlineSyncing: false,
   position: 0,
   targetPosition: 0,
   lastAutoAt: 0,
@@ -62,6 +66,12 @@ function setupHomeGallery() {
   restoreHiddenHomeExamples();
   data.amount++;
   data.loading.status = true;
+  if (scene.homeGallery.refreshTimer == null) {
+    scene.homeGallery.refreshTimer = window.setInterval(
+      refreshHomeExamples,
+      PLAYSPACE_HOME_GALLERY_REFRESH_INTERVAL,
+    );
+  }
   refreshHomeExamples().finally(loaded);
 }
 
@@ -75,8 +85,12 @@ function homeGalleryRelativeSlot(index, position, count) {
 function homeGalleryDisplayCards() {
   let state = scene.homeGallery;
   return state.examples.filter(
-    (card) => !state.hiddenExampleIds.has(homeExampleId(card.url)),
+    (card) => !state.hiddenExampleIds.has(homeCardExampleId(card)),
   );
+}
+
+function homeCardExampleId(card) {
+  return homeExampleId(card?.sourceUrl || card?.url);
 }
 
 function homeExampleId(url) {
@@ -183,7 +197,7 @@ function openHomeGalleryModeration() {
   let moderation = state.moderation;
   if (scene.session.mode != "idle" || moderation.open) return false;
   let availableIds = new Set(
-    state.examples.map((card) => homeExampleId(card.url)),
+    state.examples.map(homeCardExampleId),
   );
   moderation.draftHiddenIds = new Set(
     [...state.hiddenExampleIds].filter((id) => availableIds.has(id)),
@@ -234,7 +248,7 @@ function openHomeGalleryModeration() {
     grid.append(empty);
   }
   for (let card of state.examples) {
-    let id = homeExampleId(card.url);
+    let id = homeCardExampleId(card);
     let button = document.createElement("button");
     button.type = "button";
     button.className = "home-moderation__card";
@@ -349,7 +363,7 @@ function openHomeGalleryRescan(card) {
   overlay.querySelector(".home-rescan__poster").src = card.url;
   setDownloadHandoffQr(
     overlay.querySelector(".home-rescan__qr"),
-    card.url,
+    card.downloadUrl || card.url,
   );
   overlay.querySelector(".home-rescan__close").addEventListener(
     "click",
@@ -364,7 +378,7 @@ function registerHomeGalleryCenterTap(card) {
   if (card == null) return false;
   let state = scene.homeGallery.rescan;
   let now = millis();
-  let id = homeExampleId(card.url);
+  let id = homeCardExampleId(card);
   let isDoubleTap =
     state.lastTapId == id && now - state.lastTapAt <= 450;
   state.lastTapAt = now;
@@ -377,37 +391,177 @@ function registerHomeGalleryCenterTap(card) {
 
 async function refreshHomeExamples() {
   let state = scene.homeGallery;
+  if (scene.session.mode != "idle") return;
   let requestId = ++state.exampleRequestId;
   try {
-    let response = await fetch(playSpaceApiUrl("/api/examples"), {
-      cache: "no-store",
-    });
-    if (!response.ok) throw new Error("Example service unavailable");
-    let payload = await response.json();
-    let urls = Array.isArray(payload.examples) ? payload.examples : [];
-    if (Array.isArray(payload.excludedExampleIds)) {
-      applyHiddenHomeExamples(payload.excludedExampleIds);
-    }
-    let cards = await Promise.all(urls.map((url) => new Promise((resolve) => {
-      loadImage(
-        `${url}?v=${Date.now()}`,
-        (thumbnail) => resolve({ thumbnail, url }),
-        (error) => {
-          console.warn(`Unable to load PlaySpace example ${url}`, error);
-          resolve(null);
-        },
+    let fetchPayload = async (url, timeout) => {
+      let controller = new AbortController();
+      let timer = window.setTimeout(() => controller.abort(), timeout);
+      try {
+        let response = await fetch(url, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(
+          `Example service returned ${response.status}`,
+        );
+        return await response.json();
+      } finally {
+        window.clearTimeout(timer);
+      }
+    };
+    let localHost = playSpaceRunsOnLocalKioskHost();
+    let cloudPayload = null;
+    let localPayload = null;
+    if (localHost) {
+      localPayload = await fetchPayload(
+        `${window.location.origin}/api/offline-posters`,
+        PLAYSPACE_HOME_GALLERY_REQUEST_TIMEOUT,
       );
-    })));
+    } else {
+      cloudPayload = await fetchPayload(
+        playSpaceApiUrl("/api/examples"),
+        PLAYSPACE_HOME_GALLERY_REQUEST_TIMEOUT,
+      );
+    }
+    if (Array.isArray(cloudPayload?.excludedExampleIds)) {
+      applyHiddenHomeExamples(cloudPayload.excludedExampleIds);
+    }
+    let normalizeEntry = (entry) => {
+      if (typeof entry == "string" && entry != "") {
+        return { url: entry, downloadUrl: entry, pendingUpload: false };
+      }
+      if (entry == null || typeof entry.url != "string" || entry.url == "") {
+        return null;
+      }
+      return {
+        id: typeof entry.id == "string" ? entry.id : "",
+        url: entry.url,
+        sourceUrl: typeof entry.sourceUrl == "string"
+          ? entry.sourceUrl
+          : "",
+        downloadUrl: typeof entry.downloadUrl == "string"
+          ? entry.downloadUrl
+          : entry.url,
+        pendingUpload: entry.pendingUpload === true,
+      };
+    };
+    let entries = [
+      ...(Array.isArray(cloudPayload?.examples)
+        ? cloudPayload.examples
+        : []),
+      ...(Array.isArray(localPayload?.examples)
+        ? localPayload.examples
+        : []),
+    ].map(normalizeEntry).filter((entry) => entry != null);
+    let uniqueEntries = [...new Map(
+      entries.map((entry) => [
+        homeExampleId(entry.sourceUrl || entry.url),
+        entry,
+      ]),
+    ).values()];
+    let previousByKey = new Map(state.examples.map((card) => [
+      card.id || card.url,
+      card,
+    ]));
+    let cards = await Promise.all(uniqueEntries.map((entry) => {
+      let previous = previousByKey.get(entry.id || entry.url);
+      if (previous?.url == entry.url && previous.thumbnail != null) {
+        return Promise.resolve({ ...previous, ...entry });
+      }
+      return new Promise((resolve) => {
+        let separator = entry.url.includes("?") ? "&" : "?";
+        loadImage(
+          `${entry.url}${separator}v=${Date.now()}`,
+          (thumbnail) => resolve({ thumbnail, ...entry }),
+          (error) => {
+            console.warn(
+              `Unable to load PlaySpace example ${entry.url}`,
+              error,
+            );
+            resolve(null);
+          },
+        );
+      });
+    }));
     if (requestId != state.exampleRequestId) return;
-    state.examples = cards.filter((card) => card != null);
-    state.position = 0;
-    state.targetPosition = 0;
-    state.lastAutoAt = millis();
+    let nextExamples = cards.filter((card) => card != null);
+    let previousIds = state.examples.map(homeCardExampleId).join("|");
+    let nextIds = nextExamples.map(homeCardExampleId).join("|");
+    state.examples = nextExamples;
+    if (previousIds != nextIds) {
+      state.position = 0;
+      state.targetPosition = 0;
+      state.lastAutoAt = millis();
+    }
+    syncOfflineHomeExamples(
+      Array.isArray(localPayload?.pendingUploads)
+        ? localPayload.pendingUploads
+        : [],
+    );
   } catch (error) {
     if (requestId != state.exampleRequestId) return;
-    state.examples = [];
+    if (state.examples.length == 0) state.examples = [];
     console.warn("Unable to refresh PlaySpace examples", error);
   }
+}
+
+async function syncOfflineHomeExample(entry) {
+  let id = entry?.id;
+  if (!entry?.pendingUpload || typeof id != "string" || id == "") {
+    return false;
+  }
+  let base = `${window.location.origin}/api/offline-posters/${encodeURIComponent(id)}`;
+  let claimResponse = await fetch(`${base}/claim`, { method: "POST" });
+  if (claimResponse.status == 409 || claimResponse.status == 404) return false;
+  if (!claimResponse.ok) throw new Error("Unable to claim offline poster");
+  let claim = await claimResponse.json();
+  try {
+    let imageResponse = await fetch(claim.uploadUrl, { cache: "no-store" });
+    if (!imageResponse.ok) throw new Error("Offline poster image unavailable");
+    let posterBlob = await imageResponse.blob();
+    let result = await requestCloudDownloadSession(posterBlob);
+    let session = result.session;
+    let syncedResponse = await fetch(`${base}/synced`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        exampleUrl: session.exampleUrl,
+        downloadUrl: session.downloadUrl,
+        posterImageUrl: session.posterImageUrl,
+        expiresAt: session.expiresAt,
+      }),
+    });
+    if (!syncedResponse.ok) {
+      throw new Error("Unable to confirm offline poster upload");
+    }
+    return true;
+  } catch (error) {
+    fetch(`${base}/release`, { method: "POST" }).catch(() => {});
+    throw error;
+  }
+}
+
+async function syncOfflineHomeExamples(entries) {
+  let state = scene.homeGallery;
+  if (state.offlineSyncing || !playSpaceRunsOnLocalKioskHost()) return;
+  let pending = entries.filter((entry) => entry?.pendingUpload === true);
+  if (pending.length == 0) return;
+  state.offlineSyncing = true;
+  let changed = false;
+  try {
+    for (let entry of pending) {
+      try {
+        changed = await syncOfflineHomeExample(entry) || changed;
+      } catch (error) {
+        console.warn(`Unable to sync offline poster ${entry.id}`, error);
+        break;
+      }
+    }
+  } finally {
+    state.offlineSyncing = false;
+  }
+  if (changed) refreshHomeExamples();
 }
 
 function homeGalleryLayout() {
