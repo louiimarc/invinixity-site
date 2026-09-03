@@ -214,11 +214,12 @@ function draw() {
       scene.ui.button.padding * scene.ui.scale + fieldHeight / 2,
     );
   let fieldVisibleY = lerp(fieldClosedY, fieldOpenY, editTransition);
-  let doneHiddenX = uiHiddenRightX(
+  let doneVisibleX = uiButtonBounds("left").x;
+  let doneHiddenX = uiHiddenLeftX(
     doneButton.w,
     scene.ui.button.padding * scene.ui.scale,
   );
-  let doneX = map(editTransition, 0, 1, doneHiddenX, 0);
+  let doneX = map(editTransition, 0, 1, doneHiddenX, doneVisibleX);
 
   scene.gui.done.armed = scene.ui.pointer.pressTarget == "done";
   drawFlowSliceButton(
