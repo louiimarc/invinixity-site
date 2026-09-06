@@ -95,7 +95,6 @@ body::before {
 .project-copy p { margin: 0; font-size: 11px; line-height: 1.45; text-transform: uppercase; letter-spacing: .08em; }
 .project-copy h2 { margin: 9px 0 0; font-size: clamp(32px, 4.2vw, 70px); line-height: .9; letter-spacing: -.06em; }
 .project-description { max-width: 340px; align-self: end; text-transform: none !important; letter-spacing: -.01em !important; font-size: 15px !important; }
-.project--playspace .project-image-wrap { background: #d8d8d5; }
 .project--gnimrofarret .project-image { filter: contrast(1.2) saturate(.75); }
 .project--axelerometric .project-image { filter: contrast(1.1) saturate(.9); }
 .studio-section { background: var(--blue); color: white; padding: 5vw 2.5vw 3vw; min-height: 80vh; display: flex; flex-direction: column; }

@@ -3,15 +3,6 @@ import { ArrowDown, ArrowUpRight, Asterisk, Sparkles } from 'lucide-react';
 const projects = [
   {
     number: '01',
-    title: 'PlaySpace',
-    kind: 'Creative installation · 2026',
-    description: 'A touch-first digital paper studio where visitors turn portraits, gestures, and words into one-of-one posters.',
-    image: '/projects/playspace.png',
-    href: 'https://invinixity.com/creators/louism/PlaySpace/',
-    className: 'project--playspace',
-  },
-  {
-    number: '02',
     title: 'Gnimrofarret',
     kind: 'Generative world · Ongoing',
     description: 'A camera-aware synthetic landscape that bends atmosphere, sound, and motion into a world of its own.',
