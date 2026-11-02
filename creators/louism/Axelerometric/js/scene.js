@@ -44,7 +44,7 @@ const playback = {
             stroke(151, 222, 207, 255 * opacity);
             strokeWeight(1.8);
             box(300, a.sharedY, 300);
-            drawFrontMarker(a.sharedY, 300);
+            drawFrontMarker(300, a.sharedY, 300);
             pop();
         }
         for (let i = 0; i < count; i++) {

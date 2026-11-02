@@ -78,7 +78,7 @@ class BouncingSphere {
                    opacity * Math.min(1, (1 - merge) * 4));
             strokeWeight(selected ? 1.8 : 1);
             box(bounds.x, bounds.y, bounds.z);
-            drawFrontMarker(bounds.y, bounds.z);
+            drawFrontMarker(bounds.x, bounds.y, bounds.z);
             const points = wallWaveforms[this.waveform];
             if (points && merge < 0.75) {
                 const span = Math.min(bounds.x * 0.6, bounds.y * 1.5);
@@ -131,12 +131,14 @@ class BouncingSphere {
     }
 }
 
-// Centered on the front floor edge, pointing out along local +Z.
-function drawFrontMarker(boxHeight, depth) {
-    const y = boxHeight / 2, z = depth / 2;
-    beginShape();
-    vertex(-6, y, z + 2);
-    vertex(6, y, z + 2);
-    vertex(0, y + 3, z + 14);
-    endShape(CLOSE);
+// A short inset bar identifies the +Z face from any orbit angle.
+function drawFrontMarker(boxWidth, boxHeight, depth) {
+    const halfLength = boxWidth * 0.12;
+    const y = boxHeight / 2 - 7;
+    const z = depth / 2 + 0.6;
+    push();
+    strokeCap(ROUND);
+    strokeWeight(3);
+    line(-halfLength, y, z, halfLength, y, z);
+    pop();
 }
