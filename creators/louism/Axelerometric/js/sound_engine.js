@@ -188,19 +188,23 @@ class SoundEngine {
             source.frequency.exponentialRampToValueAtTime(39, time + duration);
         } else if (sample) {
             source.buffer = sample;
-            duration = Math.min(duration, sample.duration);
+            duration = hat ? Math.min(duration, sample.duration) : sample.duration;
         } else {
             source.type = voice;
             source.frequency.value = frequency;
         }
         const gain = ctx.createGain();
         const end = time + duration;
-        gain.gain.setValueAtTime(0, time);
-        const peak = kick ? 0.4 : hat ? 0.19 : sample ? 0.22 : 0.12;
-        gain.gain.linearRampToValueAtTime(peak, time + Math.min(0.004, duration / 3));
-        if (kick) gain.gain.exponentialRampToValueAtTime(0.11, time + duration * 0.48);
-        if (sample && !hat) gain.gain.setValueAtTime(0.22, end - Math.min(0.025, duration / 3));
-        gain.gain.exponentialRampToValueAtTime(0.0001, end);
+        if (sample && !hat) {
+            // Imported one-shots keep the file's own attack and decay.
+            gain.gain.value = 0.22;
+        } else {
+            gain.gain.setValueAtTime(0, time);
+            const peak = kick ? 0.4 : hat ? 0.19 : 0.12;
+            gain.gain.linearRampToValueAtTime(peak, time + Math.min(0.004, duration / 3));
+            if (kick) gain.gain.exponentialRampToValueAtTime(0.11, time + duration * 0.48);
+            gain.gain.exponentialRampToValueAtTime(0.0001, end);
+        }
         source.connect(gain);
         let routes;
         if (spatialOutput.merger) {
@@ -225,14 +229,7 @@ class SoundEngine {
             for (const node of routes) node.disconnect();
             this.sources.delete(source);
         };
-        if (sample) {
-            // Keep short one-shots intact. Longer recordings expose six slices,
-            // with a repeatable entry point for each wall of the chamber.
-            const offset = sample.duration >= 2 ? face / 5 * (sample.duration - duration) : 0;
-            source.start(time, offset);
-        } else {
-            source.start(time);
-        }
+        source.start(time);
         source.stop(end);
     }
 
