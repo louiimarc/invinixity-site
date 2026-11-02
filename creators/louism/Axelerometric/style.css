@@ -1,6 +1,67 @@
-html,
-body {
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
+@font-face { font-family: SyneMono; src: url("assets/font/SyneMono-Regular.ttf"); }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { display: grid; grid-template-rows: auto minmax(0,1fr) auto; background: #090f1e; color: #dceae9; font: 14px SyneMono, monospace; color-scheme: dark; }
+header, .console { padding: 12px clamp(12px,3vw,40px); background: #090f1e; }
+header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #233047; }
+small, label { color: #9faec3; font-size: 11px; letter-spacing: .07em; }
+h1 { font-weight: normal; font-size: clamp(19px,3vw,32px); margin: 3px 0 0; }
+#stage { min-height: 0; overflow: hidden; touch-action: none; }
+canvas { display: block; }
+.console { border-top: 1px solid #233047; }
+.controls { display: flex; align-items: end; flex-wrap: wrap; gap: 8px 14px; }
+label { display: grid; gap: 4px; }
+button, select, input { font: inherit; font-size: 14px; letter-spacing: normal; border: 1px solid #35445e; border-radius: 4px; color: #dbeae9; background: #101a2c; padding: 6px 8px; max-width: 160px; height: 32px; }
+input[type=number] { width: 70px; }
+button { cursor: pointer; }
+#transport { background: #a6e9d7; color: #101d29; }
+#status { color: #95a7bc; font-size: 12px; margin: 8px 0 0; }
+@media (max-width: 590px) {
+    .controls { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
+    .controls label > *, .controls button { width: 100%; min-width: 0; max-width: none; }
+    #import { grid-column: span 2; }
+    header, .console { padding: 8px 12px; }
+}
+.monitor { display: flex; align-items: center; gap: 8px; }
+#level { width: clamp(30px,6vw,90px); }
+.credit { float: right; font-size: 11px; color: #9cc9c1; margin-top: 8px; }
+@media (max-width: 750px) { .credit { float: none; display: inline-block; } }
+
+h1 { display: flex; align-items: center; gap: 11px; margin: 0; font-size: clamp(18px, 2vw, 25px); }
+h1::before { content: ''; width: 12px; height: 12px; border-radius: 50%; background: #e87880; }
+.workspace { display: grid; grid-template-columns: clamp(54px, 13vw, 154px) minmax(0, 1fr); min-height: 0; padding-left: clamp(8px, 2vw, 28px); }
+#spectrum-plot { width: 100%; height: 100%; min-height: 0; touch-action: manipulation; }
+.console { max-height: 50dvh; overflow: auto; }
+.console summary { cursor: pointer; width: fit-content; color: #b6c8d8; font-size: 12px; }
+.console[open] summary { margin-bottom: 12px; }
+#level { accent-color: #9ce1cd; }
+#level::-webkit-meter-optimum-value { background: #9ce1cd; }
+#present-link, .lan-address a { color: #a6e9d7; }
+#present-link { margin-right: 8px; font-size: 12px; }
+.lan-address { color: #9faec3; font-size: 12px; overflow-wrap: anywhere; }
+body.present { height: 100dvh; grid-template-rows: minmax(0,1fr); overflow: hidden; }
+.join { position: fixed; inset: 0; display: grid; align-content: center; justify-items: center; gap: 14px; padding: 16px; background: #090f1eee; }
+.join p { margin: 0; }
+.join button, .join input { max-width: none; }
+.join[hidden] { display: none; }
+#qr-dialog { max-width: min(90vw, 350px); background: #101a2c; color: #dbeae9; border: 1px solid #44536a; padding: 20px; text-align: center; }
+#qr-dialog::backdrop { background: #050910bf; }
+#qr-dialog h2 { font-size: 18px; font-weight: normal; margin-top: 0; }
+#qr-code { margin: 16px auto; max-width: 100%; height: auto !important; }
+#lan-link { display: block; color: #a6e9d7; overflow-wrap: anywhere; }
+#qr-dialog form { margin-top: 16px; }
+.workspace { grid-template-columns: clamp(54px, 13vw, 154px) minmax(0,1fr) clamp(44px, 10vw, 128px); padding-right: clamp(4px, 1.5vw, 24px); }
+#bass-chamber { width: 100%; height: 100%; min-width: 0; min-height: 0; pointer-events: none; }
+#stage, #spectrum-plot { min-width: 0; }
+@media (orientation: portrait) {
+    body { height: 100dvh; }
+    .workspace {
+        grid-template-columns: minmax(0,1fr);
+        grid-template-rows: calc(100% / 8.6) minmax(0, 1fr) var(--spectrum-share, 0%);
+        grid-template-areas: "bass" "rooms" "spectra";
+        padding: 0 8px;
+    }
+    #bass-chamber { grid-area: bass; }
+    #stage { grid-area: rooms; }
+    #spectrum-plot { grid-area: spectra; }
 }

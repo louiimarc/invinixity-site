@@ -1,125 +1,142 @@
+// One period of each oscillator, in phase (0–1) and amplitude (−1–1).
+const wallWaveforms = {
+    sine: Array.from({length:33}, (_, i) => [i / 32, Math.sin(i * Math.PI / 16)]),
+    triangle: [[0,0], [0.25,1], [0.75,-1], [1,0]],
+    square: [[0,-1], [0.25,-1], [0.25,1], [0.75,1], [0.75,-1], [1,-1]],
+    sawtooth: [[0,0], [0.5,1], [0.5,-1], [1,0]]
+};
+
 class BouncingSphere {
-    constructor(initialDirection = null) {
-        // Define the bounding box dimensions
-        this.boundary = {width : 1024, height : 512, depth : 1024};
-
-        // Random Randominitial position inside the bounding box
-        this.position = createVector(
-            random(-this.boundary.width * 0.5, this.boundary.width * 0.5),
-            random(-this.boundary.height * 0.5, this.boundary.height * 0.5),
-            random(-this.boundary.depth * 0.5, this.boundary.depth * 0.5));
-
-        // Set initial direction, or random if none is provided
-        if (initialDirection) {
-            this.direction =
-                initialDirection.copy()
-                    .normalize(); // Normalize to ensure unit vector
-        } else {
-            this.direction = p5.Vector.random3D(); // Random direction vector
-        }
-        // Random speed between 4 and 12 units
-        this.speed = floor(random(2, 12) + 0.5);
-
-        // Flag to check if the sphere hit a wall
-        this.hitWall = false;
-
-        this.hue = random(0, 360);
-        this.saturation = random(25, 100);
-        this.brightness = random(50, 100);
+    constructor(index) {
+        this.position = createVector(random(-40,40), random(-40,40), random(-40,40));
+        this.direction = p5.Vector.random3D();
+        this.speed = 130 + index * 21; // World units per quarter note.
+        this.hue = random(360);
+        this.flash = 0;
+        this.faceGlow = Array(6).fill(0);
+        this.radius = 8;
     }
 
-    // Method to update the position of the sphere and check if it hits a wall
-    update() {
-        // Reset the hitWall flag
-        this.hitWall = false;
-
-        // Move the sphere by its direction vector scaled by speed
-        this.position.add(p5.Vector.mult(this.direction, this.speed));
-
-        // Check for collisions with the bounding box and reflect the direction
-        // vector
-        this.checkBounds();
+    update(beats, bounds, onHit) {
+        let face = -1;
+        // Capture the step before any axis reflects. At an edge or corner
+        // each touched wall gets its own contact point and tile.
+        const axes = ['x','y','z'];
+        const travel = this.speed * beats;
+        let startPoint, motion;
+        if (onHit) {
+            startPoint = {};
+            motion = {};
+            for (const axis of axes) {
+                const limit = bounds[axis] / 2 - this.radius;
+                startPoint[axis] = constrain(this.position[axis], -limit, limit);
+                motion[axis] = this.direction[axis] * travel;
+            }
+        }
+        for (let i = 0; i < this.faceGlow.length; i++) {
+            this.faceGlow[i] = Math.max(0, this.faceGlow[i] - beats * 3);
+        }
+        for (const [i, axis] of axes.entries()) {
+            const limit = bounds[axis] / 2 - this.radius;
+            const start = constrain(this.position[axis], -limit, limit);
+            let next = start + this.direction[axis] * travel;
+            let distanceToHit = Math.abs(Math.sign(this.direction[axis]) * limit - start);
+            // Reflect the overshoot as well, including in narrow MIDI boxes.
+            while (Math.abs(next) > limit ||
+                   (Math.abs(next) === limit && next * this.direction[axis] > 0 && travel > 0)) {
+                const side = Math.sign(next);
+                next = 2 * side * limit - next;
+                this.direction[axis] *= -1;
+                face = i * 2 + (side > 0 ? 1 : 0);
+                this.faceGlow[face] = 1;
+                if (onHit) {
+                    const fraction = constrain(distanceToHit / Math.abs(motion[axis]), 0, 1);
+                    const point = {};
+                    for (const other of axes) {
+                        const edge = bounds[other] / 2 - this.radius;
+                        let value = startPoint[other] + motion[other] * fraction;
+                        while (Math.abs(value) > edge) value = 2 * Math.sign(value) * edge - value;
+                        point[other] = value;
+                    }
+                    onHit(face, point, fraction);
+                    distanceToHit += 2 * limit;
+                }
+            }
+            this.position[axis] = next;
+        }
+        this.flash = face >= 0 ? 1 : Math.max(0, this.flash - beats * 4);
+        return face;
     }
 
-    // Check for collisions with the bounding box
-    checkBounds() {
-        // X-axis reflection
-        if (this.position.x <= -this.boundary.width / 2 ||
-            this.position.x >= this.boundary.width / 2) {
-            this.direction.x *= -1; // Reflect direction
-            this.hitWall = true;    // Mark that a wall was hit
-            this.speed = floor(random(2, 12) + 0.5);
-        }
-
-        // Y-axis reflection
-        if (this.position.y <= -this.boundary.height / 2 ||
-            this.position.y >= this.boundary.height / 2) {
-            this.direction.y *= -1; // Reflect direction
-            this.hitWall = true;    // Mark that a wall was hit
-            this.speed = floor(random(2, 12) + 0.5);
-        }
-
-        // Z-axis reflection
-        if (this.position.z <= -this.boundary.depth / 2 ||
-            this.position.z >= this.boundary.depth / 2) {
-            this.direction.z *= -1; // Reflect direction
-            this.hitWall = true;    // Mark that a wall was hit
-            this.speed = floor(random(2, 12) + 0.5);
-        }
-    }
-
-    // Method to draw the sphere
-    display() {
+    display(bounds, index, selected, merge, opacity = 1, muted = false) {
         push();
-        colorMode(HSB, 360, 100, 100);
-
-        noFill();
-        stroke(this.hue, this.saturation, this.brightness);
-        box(this.boundary.width, this.boundary.height, this.boundary.depth);
-
-        translate(this.position.x, this.position.y, this.position.z);
-
+        colorMode(HSB, 360, 100, 100, 1);
+        if (merge < 1) {
+            if (!muted) this.drawHitFaces(bounds, opacity * (1 - merge) ** 2);
+            noFill();
+            stroke(this.hue, 48, 47 + (selected ? 8 : 0),
+                   opacity * Math.min(1, (1 - merge) * 4));
+            strokeWeight(selected ? 1.8 : 1);
+            box(bounds.x, bounds.y, bounds.z);
+            drawFrontMarker(bounds.y, bounds.z);
+            const points = wallWaveforms[this.waveform];
+            if (points && merge < 0.75) {
+                const span = Math.min(bounds.x * 0.6, bounds.y * 1.5);
+                stroke(this.hue, 48, 85, opacity * 0.8 * (1 - merge / 0.75));
+                strokeWeight(1.5);
+                beginShape();
+                for (const [phase, amplitude] of points) {
+                    vertex((phase - 0.5) * span, -amplitude * span * 0.16, -bounds.z / 2 + 0.6);
+                }
+                endShape();
+            }
+        }
+        push();
+        translate(this.position.x * merge,
+                  lerp(-bounds.y / 2 - 16, this.position.y - 15, merge),
+                  this.position.z * merge);
         noStroke();
-        if (this.hitWall)
-            fill(0, 0, 100);
-        else
-            fill(this.hue, this.saturation, this.brightness);
-        sphere(20); // Draw the sphere
+        fill(this.hue, 32, 92, opacity);
+        textSize(14);
+        text(String(index + 1).padStart(2, '0'), 0, 0);
+        pop();
+        translate(this.position.x, this.position.y, this.position.z);
+        noStroke();
+        fill(this.hue, 62 * (1 - this.flash), 100, opacity);
+        sphere(this.radius, 12, 8);
         pop();
     }
 
-    // Return the position and trigger state (whether the sphere hit a wall)
-    getPositionAndTrigger() {
-        return {
-            position : this.position, // Return the current position
-            trigger :
-                this.hitWall // Return whether it hit a wall (trigger the sound)
-        };
+    drawHitFaces(bounds, opacity) {
+        for (const [face, glow] of this.faceGlow.entries()) {
+            if (glow === 0) continue;
+            const side = face % 2 === 0 ? -1 : 1;
+            push();
+            noStroke();
+            fill(this.hue, 65, 100, glow * opacity);
+            if (face < 2) {
+                translate(side * bounds.x / 2, 0, 0);
+                rotateY(HALF_PI);
+                plane(bounds.z, bounds.y);
+            } else if (face < 4) {
+                translate(0, side * bounds.y / 2, 0);
+                rotateX(HALF_PI);
+                plane(bounds.x, bounds.z);
+            } else {
+                translate(0, 0, side * bounds.z / 2);
+                plane(bounds.x, bounds.y);
+            }
+            pop();
+        }
     }
+}
 
-    // Method to set a new bounding box size and ensure the sphere remains
-    // inside
-    setBoundingBox(width, height, depth) {
-        this.boundary = {width : width, height : height, depth : depth};
-        console.log(`Bounding box set to width: ${width}, height: ${
-            height}, depth: ${depth}`);
-
-        // Ensure the sphere is still within the new bounding box
-        this.ensureInBounds();
-    }
-
-    // Ensure the sphere remains within the bounding box
-    ensureInBounds() {
-        // Adjust position if outside X bounds
-        this.position.x = constrain(this.position.x, -this.boundary.width / 2,
-                                    this.boundary.width / 2);
-
-        // Adjust position if outside Y bounds
-        this.position.y = constrain(this.position.y, -this.boundary.height / 2,
-                                    this.boundary.height / 2);
-
-        // Adjust position if outside Z bounds
-        this.position.z = constrain(this.position.z, -this.boundary.depth / 2,
-                                    this.boundary.depth / 2);
-    }
+// Centered on the front floor edge, pointing out along local +Z.
+function drawFrontMarker(boxHeight, depth) {
+    const y = boxHeight / 2, z = depth / 2;
+    beginShape();
+    vertex(-6, y, z + 2);
+    vertex(6, y, z + 2);
+    vertex(0, y + 3, z + 14);
+    endShape(CLOSE);
 }

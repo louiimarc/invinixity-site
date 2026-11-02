@@ -1,0 +1,6 @@
+{
+  "name": "axelerometric",
+  "private": true,
+  "scripts": { "start": "node lan-server.cjs" },
+  "dependencies": { "ws": "^8.18.0" }
+}

@@ -1,107 +1,140 @@
-function draw() {
-    background(0);
+const roomMotion = { progress: 0, target: 0 };
+const lookahead = 150;
+const stepMs = 1000 / 40;
+let nextFrame;
+let sceneCamera;
+let lastKickBeat = -1;
+const hatPlane = {randomize:false, height:0.5, leg:null, current:0.5, crossed:false, hitAt:-1};
 
-//    rotateX(map(midi.getValue('cc', 48), 0, 127, -45, 45));
-//    rotateY(map(midi.getValue('cc', 47), 0, 127, -90, 90));
-    
-//    let multiplier = map(midi.getValue('cc', 28), 0, 127, 1, 8);
-    
-    scene.elapsedTime = millis() / 1000.0;
-
-    let ccValue = {x : [], y: [], z : []};
-    ccValue.y[0] = midi.getValue('cc', 27);
-    ccValue.y[0] = map(ccValue.y[0], 127, 0, 64, 512);
-
-    let shifter = map(midi.getValue('cc', 27), 0, 127, 1, 10);
-    
-    //numberOfShownEntity = floor(map(midi.getValue('cc', 47), 0, 127, 0, 6));
-    
-    for (let i = 0; i < numberOfShownEntity; i++) {
-        entity[i].sphere.update();
-        entity[i].sphere.display();
-
-        let sphereState = entity[i].sphere.getPositionAndTrigger();
-
-        entity[i].sound.oscillator.freq(entity[i].sound.frequency * shifter);
-        entity[i].sound.triggerSound(sphereState.trigger);
-
-        let panningPosition = sphereState.position;
-        
-        push();
-        translate(sphereState.position.x, sphereState.position.y - 30, sphereState.position.z);
-        stroke(255);
-        fill(255);
-        textAlign(CENTER, BOTTOM);
-        text(i, 0, 0);
-        pop();
-        
-        let normalizedX = map(panningPosition.x, -500, 500, -1, 1);
-        let normalizedY = map(panningPosition.y, -250, 250, -1, 1);
-        let normalizedZ = map(panningPosition.z, -500, 500, -1, 1);
-
-        entity[i].sound.setPannerPosition(normalizedX, normalizedY,
-                                          normalizedZ);
-
-        ccValue.x.push(midi.getValue('cc', 21 + i));
-        ccValue.z.push(midi.getValue('cc', 41 + i));
-        
-        ccValue.x[i] = map(ccValue.x[i], 127, 0, 64, 1024);
-        ccValue.z[i] = map(ccValue.z[i], 127, 0, 64, 1024);
-        
-        entity[i].sphere.setBoundingBox(ccValue.x[i], ccValue.y[0], ccValue.z[i]);
+function advancePlane(frame) {
+    const leg = Math.floor(frame.bassBeat);
+    if (leg !== hatPlane.leg) {
+        hatPlane.leg = leg;
+        hatPlane.current = hatPlane.randomize ? 0.15 + Math.random() * 0.7 : hatPlane.height;
+        hatPlane.crossed = false;
     }
+    frame.planeHeight = hatPlane.current;
+    const crossing = leg + (leg % 2 === 0 ? hatPlane.current : 1 - hatPlane.current);
+    if (!hatPlane.crossed && frame.bassBeat >= crossing) {
+        hatPlane.crossed = true;
+        const at = frame.at - (frame.bassBeat - crossing) * 60000 / clock.bpm;
+        // Skip old crossings if the tab resumes halfway through a trip.
+        if (frame.at - at <= stepMs + 1) {
+            hatPlane.hitAt = at;
+            if (sounding) {
+                frame.hat = {voice:'closed-hat', at, duration:0.065, pan:0.08};
+                scheduleNote(frame.hat, bassSound, getAudioContext());
+            }
+        }
+    }
+    frame.planeHitAt = hatPlane.hitAt;
+}
+let wallRipples = [];
+let wheelAngle = -Math.PI / 2;
+const slotProgress = Array.from({length: numberOfEntity}, (_, i) => Number(i < numberOfShownEntity));
 
-    inout.audio.update();
-    scene.render3D.setUniform("spectrum", inout.audio.spectrum.texture);
-
-    scene.render3D.setUniform('maxRayBounces', scene.maxRayBounces);
-    scene.render3D.setUniform("u_time", scene.elapsedTime);
-    scene.render3D.setUniform("u_resolution",
-                              [ scene.graphics.width, scene.graphics.height ]);
-    scene.render3D.setUniform("u_mouse",
-                              [ mouseX, map(mouseY, 0, height, height, 0) ]);
-    scene.render3D.setUniform("tex0", scene.texture0);
-    //    scene.render3D.setUniform("tex1", scene.texture1);
-
-    scene.graphics.background(125);
-    
-    orbitControl();
-
-    perspective(atan(height / 2 / 1024) / 0.5, width / height, 256);
-
-    /*
-    push();
-    strokeWeight(1);
-    stroke(55);
-    fill(125);
-    shader(scene.render3D);
-
-    let s = 20;
-    scale(s, -s, s);
-    model(scene.object3D);
-
-    pop(); */
-
-    //    imageMode(CENTER);
-    //    image(scene.graphics, 0, 0, width, height);
-
-    resetShader();
-    push();
-    noFill();
-    stroke(225);
-    strokeWeight(2);
-    box(1024, ccValue.y[0], 1024);
-    pop();
-
-    // LOADING BAR
-    data.loading.bar();
-
-    // DYNAMIC SCALING
-    dynamicScaling(scene.fps.minimum, scene.fps.maximum);
+function ringRadius(slots) {
+    if (slots <= 1) return 0;
+    if (slots < 2) return 180 * (slots - 1);
+    return 180 / Math.sin(Math.PI / slots);
 }
 
-function windowResized() {
-    resizeCanvas(windowWidth, windowHeight);
-    scene.graphics.resizeCanvas(width * scene.pixScale,
-                                height * scene.pixScale);
+
+function advanceRoom(beats) {
+    const remaining = roomMotion.target - roomMotion.progress;
+    roomMotion.progress += Math.sign(remaining) * Math.min(Math.abs(remaining), beats);
+    const t = roomMotion.progress;
+    return t * t * (3 - 2 * t);
+}
+
+function pumpSimulation() {
+    const now = playback.now();
+    if (!nextFrame || nextFrame < now || nextFrame > now + 1000) nextFrame = now + lookahead;
+    while (nextFrame <= now + lookahead) {
+        const beats = stepMs / 1000 * clock.bpm / 60;
+        const merge = advanceRoom(beats);
+        const count = numberOfShownEntity;
+        wheelAngle = (wheelAngle + beats * 2 * Math.PI / 32) % (2 * Math.PI);
+        const weights = slotProgress.map((value, i) => {
+            const target = Number(i < count);
+            const progress = value + constrain(target - value, -beats, beats);
+            slotProgress[i] = progress;
+            return progress * progress * (3 - 2 * progress);
+        });
+        const slots = weights.reduce((sum, weight) => sum + weight, 0);
+        const radius = ringRadius(slots);
+        let arc = 0;
+        const cc = n => midi.getValue('cc', n) / 127;
+        const heightCC = cc(27);
+        const sharedY = 300 - 118 * heightCC;
+        const frame = {at: nextFrame, merge, sharedY, radius, activeCount:count, solo:soloIndex, boxes: [], selected: selectedChamber, sounding, camera: sceneCamera};
+        // Each quarter note lands on the opposite cap of the bass chamber.
+        frame.bassBeat = clock.beatAt(nextFrame / 1000);
+        advancePlane(frame);
+        const beat = Math.ceil(frame.bassBeat);
+        const delay = (beat - frame.bassBeat) * 60000 / clock.bpm;
+        if (sounding && beat !== lastKickBeat && delay < stepMs) {
+            lastKickBeat = beat;
+            frame.kick = {voice:'kick', at:nextFrame + delay, duration:Math.min(0.42, 48 / clock.bpm), freq:46, pan:0};
+            scheduleNote(frame.kick, bassSound, getAudioContext());
+        }
+        wallRipples = merge > 0.75 ? wallRipples.filter(hit => nextFrame - hit.at < roomTiles.lifetime) : [];
+        const notes = [];
+        for (let i = 0; i < weights.length; i++) {
+            const opacity = weights[i];
+            if (!opacity) break;
+            // Each chamber owns an arc proportional to its visibility.
+            const angle = wheelAngle + (arc + (opacity - weights[0]) / 2) * 2 * Math.PI / slots + merge * Math.PI / 2;
+            arc += opacity;
+            const cx = radius * (1 - merge) * Math.cos(angle);
+            const cy = radius * (1 - merge) * Math.sin(angle);
+            const {sphere, voice, degree} = entity[i];
+            const local = {x:210 - 158 * cc(21 + i), y:170 - 118 * heightCC, z:180 - 128 * cc(41 + i)};
+            const bounds = {x:lerp(local.x, 300, merge), y:lerp(local.y, sharedY, merge), z:lerp(local.z, 300, merge)};
+            // Map the simulated ball's travel to the drawn walls, including its radius.
+            const displayCoordinate = (point, axis) => point[axis] * (bounds[axis]/2 - sphere.radius) /
+                (local[axis]/2 - sphere.radius);
+            let impact;
+            const face = sphere.update(beats, local, (face, point, fraction) => {
+                impact = point;
+                if (merge <= 0.75 || i >= count) return;
+                const tilePoint = {x:cx + displayCoordinate(point,'x'), y:cy + displayCoordinate(point,'y'),
+                    z:displayCoordinate(point,'z')};
+                wallRipples.push({i, ...roomTiles.hit(face, tilePoint, {x:300, y:sharedY, z:300}, sphere.hue,
+                    nextFrame - (1 - fraction) * stepMs)});
+            });
+            const p = ['x','y','z'].map(axis => displayCoordinate(sphere.position, axis));
+            const waveform = Object.hasOwn(wallWaveforms, voice) ? voice : undefined;
+            frame.boxes.push({cx, cy, opacity, p, bounds, waveform, hue:sphere.hue, flash:sphere.flash, glow:sphere.faceGlow.slice()});
+            if (i >= count || face < 0 || !sounding || (soloIndex >= 0 && i !== soloIndex)) continue;
+            const pitch = degree + face;
+            const position = ['x','y','z'].map(axis => constrain(impact[axis] / (local[axis]/2 - sphere.radius), -1, 1));
+            const note = {
+                i, face, voice,
+                at: clock.nextHit(nextFrame / 1000, hitGrid) * 1000,
+                duration: 60 / clock.bpm,
+                freq: activeScale[pitch % activeScale.length] * 2 ** (Math.floor(pitch / activeScale.length) - 1) * (1 + heightCC * 9),
+                position, pan: position[0]
+            };
+            if (Math.abs(entity[i].lastNote - note.at) < 1) continue;
+            entity[i].lastNote = note.at;
+            scheduleNote(note, entity[i].sound, getAudioContext());
+            notes.push(note);
+        }
+        frame.ripples = wallRipples.slice();
+        playback.receive(frame);
+        lan.send({type:'frame', frame, notes});
+        nextFrame += stepMs;
+    }
+}
+
+function draw() {
+    background(9, 15, 30);
+    orbitControl();
+    const camera = this._renderer._curCamera;
+    sceneCamera = [camera.eyeX, camera.eyeY, camera.eyeZ, camera.centerX, camera.centerY, camera.centerZ]
+        .map(v => v / height).concat(camera.upX, camera.upY, camera.upZ);
+    if (frameCount % 4 === 0) control('level').value = spatialOutput.merger ? spatialOutput.level() : outputLevel.getLevel();
+    pumpSimulation();
+    playback.draw();
 }

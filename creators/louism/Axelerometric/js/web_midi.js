@@ -49,6 +49,7 @@ class WebMIDIListener {
                     break;
                 case 0xB0: // Control Change (CC)
                     this.ccValues[data1] = data2; // Store CC value (0-127)
+                    queueSetupSave();
                     break;
                 default:
                     console.log("Unhandled MIDI message:", event.data);

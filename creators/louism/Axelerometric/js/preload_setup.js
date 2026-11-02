@@ -1,43 +1,52 @@
 function preload() {
     font = loadFont('assets/font/SyneMono-Regular.ttf');
-    scene.render3D = loadShader('shader/vert.glsl', 'shader/frag.glsl');
 }
 
 function setup() {
-
-    createCanvas(windowWidth, windowHeight, WEBGL);
-    let gl = this._renderer.GL;
-    gl.enable(gl.CULL_FACE);
-    gl.cullFace(gl.BACK);
-    
+    const stage = document.querySelector('#stage');
+    createCanvas(stage.clientWidth, stage.clientHeight, WEBGL).parent(stage);
     pixelDensity(1);
-    noSmooth();
-    angleMode(DEGREES);
-    
     textFont(font);
-    textSize(32);
+    textAlign(CENTER, CENTER);
 
-    data.loading.position.y = -height;
-
-    scene.graphics = createGraphics(windowWidth * scene.pixScale,
-                                    windowHeight * scene.pixScale, WEBGL);
-    scene.object3D =
-        loadModel('assets/model/Krapela_Voxels.obj', false, loaded);
-    scene.texture0 = loadImage('assets/image/Krapela_Texture.png', loaded);
-
+    spatialOutput = new SpatialOutput(getAudioContext());
+    const defaultWaves = ['sine', 'sawtooth', 'square', 'triangle', 'sine', 'triangle'];
     for (let i = 0; i < numberOfEntity; i++) {
-        let randomWave =
-            random([ 'sine', 'square', 'sine', 'triangle', 'sine' ]);
-
         entity.push({
-            sound : new SoundEngine(randomWave),
-            sphere : new BouncingSphere()
+            sound: new SoundEngine(getAudioContext()),
+            sphere: new BouncingSphere(i),
+            voice: defaultWaves[i],
+            degree: i
         });
-
-        entity[i].sound.setFrequency(random(pentatonicScale) * 0.5 * (i + 1));
     }
-
-    inout.audio.setup();
-
+    bassSound = new SoundEngine(getAudioContext());
+    clock.origin = playback.now() / 1000;
+    outputLevel = new p5.Amplitude(0.7);
+    spectrumView = new SpectrumView(entity[0].sound.analyser);
+    setupControls();
+    setupSoloInputs();
     midi = new WebMIDIListener();
+    setupPersistence();
+    const tick = new Worker('js/tick-worker.js');
+    tick.onmessage = pumpSimulation;
+    control('show-qr').onclick = () => control('qr-dialog').showModal();
+    lan.connect(data => {
+        if (data.type === 'solo') toggleSolo(data.index);
+        if (data.type === 'info') {
+            const link = control('lan-link');
+            link.href = data.url;
+            link.textContent = data.url;
+            control('present-link').hidden = control('show-qr').hidden = false;
+            QRCode.toCanvas(control('qr-code'), data.url, {width:256, margin:4});
+
+        }
+    }, () => {
+        control('present-link').hidden = control('show-qr').hidden = true;
+        control('qr-dialog').close();
+    });
+    new ResizeObserver(() => {
+        if (width !== stage.clientWidth || height !== stage.clientHeight) {
+            resizeCanvas(stage.clientWidth, stage.clientHeight);
+        }
+    }).observe(stage);
 }
