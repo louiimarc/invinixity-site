@@ -35,6 +35,7 @@ function setup() {
     setupPersistence();
     const tick = new Worker('js/tick-worker.js');
     tick.onmessage = pumpSimulation;
+    setupPresentWindow();
     control('show-qr').onclick = () => control('qr-dialog').showModal();
     lan.connect(data => {
         if (data.type === 'hat-step') {
@@ -48,12 +49,12 @@ function setup() {
             const link = control('lan-link');
             link.href = data.url;
             link.textContent = data.url;
-            control('present-link').hidden = control('show-qr').hidden = false;
+            control('show-qr').hidden = false;
             QRCode.toCanvas(control('qr-code'), data.url, {width:256, margin:4});
 
         }
     }, () => {
-        control('present-link').hidden = control('show-qr').hidden = true;
+        control('show-qr').hidden = true;
         control('qr-dialog').close();
     });
     new ResizeObserver(() => {
@@ -61,4 +62,17 @@ function setup() {
             resizeCanvas(stage.clientWidth, stage.clientHeight);
         }
     }).observe(stage);
+}
+
+function setupPresentWindow() {
+    const link=control('present-link');
+    const url=new URL('present.html',location.href);
+    if(typeof BroadcastChannel==='function')url.searchParams.set('local',lan.session);
+    link.href=url.href;link.hidden=false;
+    link.onclick=event=>{
+        if(event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
+        const popup=window.open(url.href,'axelerometric-present-'+lan.session,
+            'popup=yes,width=1280,height=800,menubar=no,toolbar=no,location=no,status=no');
+        if(popup){event.preventDefault();popup.focus();}
+    };
 }

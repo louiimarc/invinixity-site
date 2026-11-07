@@ -205,9 +205,10 @@ function volumeFaces(fx,bounds) {
 const roomFX = {
     geometrySerial:0, panel:null, signature:'', geometries:new Map(), viewMaster:null,
     setup() {
+        if(isPresentation)return;
         const panel=document.createElement('section');panel.className='room-fx';panel.hidden=true;
         panel.setAttribute('aria-label','Chamber controls');
-        panel.innerHTML='<div class="fx-heading"><span id="fx-room"></span><button type="button" data-action="back">All rooms ↗</button></div>'+
+        panel.innerHTML='<div class="fx-heading"><span id="fx-room"></span></div>'+
             '<div class="fx-bank fx-bank-left"></div><div class="fx-bank fx-bank-right"></div>'+
             '<div class="fx-footer"><div class="fx-shapes" role="group" aria-label="Master FX slots"></div><p id="fx-hint" role="status"></p>'+
             '<button type="button" data-action="clear">Clear shape FX</button><button type="button" data-action="slice">Randomize percussion slice</button></div>';
@@ -225,15 +226,13 @@ const roomFX = {
         };
         panel.addEventListener('click',event=>{
             const button=event.target.closest('button');if(!button||button.disabled)return;
-            if(button.dataset.action==='back') request('unsolo');
-            else if(button.dataset.action==='slice') request('percussion-slice',{index:soloIndex});
+            if(button.dataset.action==='slice') request('percussion-slice',{index:soloIndex});
             else if(button.dataset.action==='clear') request('master-clear');
             else if(button.dataset.shape) request('master-shape',{shape:button.dataset.shape});
             else if(button.dataset.effect) request('master-effect',{effect:button.dataset.effect});
         });
         const stage=document.getElementById('stage');stage.append(panel);this.panel=panel;
-        const open=document.createElement('button');open.id='master-fx-open';open.type='button';open.textContent='Master FX';
-        open.onclick=()=>request('master-focus');stage.append(open);this.open=open;
+
     },
     syncPanel() {
         if(!this.panel)return;
@@ -243,7 +242,6 @@ const roomFX = {
         const effects=(view||masterChamber).effects;
         const signature=JSON.stringify([soloIndex,focused,shape,effects]);
         if(signature===this.signature)return;this.signature=signature;
-        this.open.hidden=focused;
         this.panel.hidden=soloIndex<0&&!focused;
         if(this.panel.hidden)return;
         this.panel.querySelector('#fx-room').textContent=focused?'Master FX · '+Object.values(effects).filter(Boolean).length+'/3':'Room '+String(soloIndex+1).padStart(2,'0');

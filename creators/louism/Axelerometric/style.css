@@ -95,7 +95,6 @@ body.present { height: 100dvh; grid-template-rows: minmax(0,1fr); overflow: hidd
 .fx-shapes button { height: 30px; padding: 4px 9px; color: #9faec3; border-color: transparent; }
 .fx-shapes button[aria-pressed="true"] { color: #a6e9d7; border-color: #a6e9d7; background: #18372f; }
 @media (max-width: 700px) { .fx-shapes { gap: 2px; padding: 3px; } .fx-shapes button { font-size: 10px; padding: 4px 7px; } }
-#master-fx-open { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); z-index: 3; font-size: 11px; color: #d0d4db; background: #20242ee8; border-color: #69717f; }
-#master-fx-open[hidden], .fx-bank[hidden], .fx-shapes[hidden] { display: none; }
+.fx-bank[hidden], .fx-shapes[hidden] { display: none; }
 .fx-shapes { flex-wrap: wrap; max-width: min(520px, 90vw); }
-@media (max-width: 700px) { #master-fx-open { top: 10px; height: 30px; font-size: 10px; padding: 4px 7px; } .fx-shapes { max-width: 300px; } }
+@media (max-width: 700px) { .fx-shapes { max-width: 300px; } }

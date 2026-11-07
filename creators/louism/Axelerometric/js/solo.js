@@ -84,7 +84,7 @@ function setupSoloInputs() {
     // percussion strip can dismiss focus. Controls and drag gestures stay independent.
     document.addEventListener('pointerdown',e=>{
         tap=null;
-        if(!e.isPrimary||e.button!==0||e.target.closest?.('.room-fx,#master-fx-open,header,.console,.join,dialog,button,input,select,a'))return;
+        if(!e.isPrimary||e.button!==0||e.target.closest?.('.room-fx,header,.console,.join,dialog,button,input,select,a'))return;
         const focused=masterIsFocused()?-2:soloIndex>=0?soloIndex:null;
         let index=-1;
         if(stage.contains(e.target)) {

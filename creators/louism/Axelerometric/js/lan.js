@@ -1,8 +1,29 @@
 const isPresentation = document.body.classList.contains('present');
 const lan = {
     socket: null,
+    session:crypto.randomUUID(),
+    channel:null, latest:null, local:false,
     offset: 0,
     connect(onPacket, onLost) {
+        const localSession=new URLSearchParams(location.search).get('local');
+        if(typeof BroadcastChannel==='function' && (!isPresentation || localSession)) {
+            this.local=isPresentation&&!!localSession;
+            this.channel=new BroadcastChannel('axelerometric-present-'+(localSession||this.session));
+            this.channel.onmessage=event=>{
+                const packet=event.data;
+                if(!packet || typeof packet.type!=='string')return;
+                if(isPresentation) {
+                    if(packet.type==='frame')this.offset=packet.relayOffset||0;
+                    onPacket(packet);
+                } else if(packet.type==='join') {
+                    this.channel.postMessage(this.latest?{...this.latest,relayOffset:this.offset}:{type:'waiting'});
+                } else if(['solo','unsolo','master-focus','master-effect','master-shape','master-clear','percussion-slice','hat-step'].includes(packet.type)) {
+                    onPacket(packet);
+                }
+            };
+            if(this.local) {this.channel.postMessage({type:'join'});return;}
+            window.addEventListener('pagehide',()=>this.channel.postMessage({type:'waiting'}));
+        }
         // The LAN server exposes these pages at its root. The public project
         // lives in a static website directory and runs the instrument locally.
         if (!['/', '/index.html', '/present.html'].includes(location.pathname)) {
@@ -40,6 +61,8 @@ const lan = {
         open();
     },
     send(data) {
+        if(data.type==='frame')this.latest=data;
+        if(this.channel && (isPresentation || data.type==='frame'))this.channel.postMessage({...data,relayOffset:this.offset});
         if (this.socket?.readyState === WebSocket.OPEN && this.socket.bufferedAmount < 65536)
             this.socket.send(JSON.stringify(data));
     }
