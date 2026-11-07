@@ -73,7 +73,7 @@ const tabletGestures={
         const pair=this.pair(),dial=this.dial;
         const delta=Math.atan2(Math.sin(pair.angle-dial.angle),Math.cos(pair.angle-dial.angle));
         dial.rotation+=delta*180/Math.PI;dial.angle=pair.angle;
-        if(event.timeStamp-dial.start>=160&&pair.distance>=35&&Math.abs(dial.rotation)>=6) {
+        if(dial.active||(event.timeStamp-dial.start>=160&&pair.distance>=35&&Math.abs(dial.rotation)>=6)) {
             dial.active=true;this.chord.usedDial=true;this.lastTap=null;
             dial.value=Math.max(30,Math.min(300,Math.round(dial.base+dial.rotation/2)));
             this.sendTempo();
@@ -81,6 +81,7 @@ const tabletGestures={
         this.drawDial(pair);
     },
     drawDial(pair) {
+        if(!this.dial?.active){this.overlay.hidden=true;return;}
         const size=Math.max(24,pair.distance),dial=this.dial;
         this.overlay.hidden=false;
         Object.assign(this.overlay.style,{left:pair.x+'px',top:pair.y+'px',width:size+'px',height:size+'px',
