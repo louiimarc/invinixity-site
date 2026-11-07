@@ -1,3 +1,5 @@
+const silentPresentation=new URLSearchParams(location.search).has('local');
+document.body.classList.toggle('silent-presentation',silentPresentation);
 let audioContext;
 let entered = false;
 let localOrbit = false;
@@ -17,6 +19,12 @@ function setup() {
     textAlign(CENTER, CENTER);
     audioContext = new AudioContext();
     spatialOutput = new SpatialOutput(audioContext);
+    if(silentPresentation) {
+        spatialOutput.master.output.gain.value=0;
+        spatialOutput.stopTracking();
+        document.getElementById('output-layout').disabled=true;
+    }
+    document.getElementById('enter').textContent=silentPresentation?'Enter fullscreen':'Enter fullscreen with sound';
     bassSound = new SoundEngine(audioContext, audioContext.destination);
     for (let i = 0; i < numberOfEntity; i++) entity.push({sound:new SoundEngine(audioContext, audioContext.destination),percussion:new SoundEngine(audioContext, audioContext.destination)});
     spectrumView = new SpectrumView(entity[0].sound.analyser);
@@ -38,7 +46,7 @@ function setup() {
             await resume;
             entered = audioContext.state === 'running';
             join.hidden = entered && lastPacket > 0;
-        } catch { statusLine.textContent = 'Tap again to enable audio.'; }
+        } catch { statusLine.textContent = silentPresentation?'Tap again to enter presentation.':'Tap again to enable audio.'; }
     };
     restoreSampleCache(audioContext).catch(() => { statusLine.textContent = 'Local sample cache unavailable.'; });
     const files = document.getElementById('local-files');
@@ -87,7 +95,7 @@ function receive(packet) {
     const {frame, notes} = packet;
     if (!lastPacket) {
         document.getElementById('enter').disabled = false;
-        statusLine.textContent = 'Controller connected';
+        statusLine.textContent = silentPresentation?'Controller connected · Sound stays in the controller':'Controller connected';
         join.hidden = entered;
     }
     lastPacket = performance.now();
