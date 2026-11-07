@@ -39,11 +39,23 @@ function randomVolume(type, shape, previous) {
         revision:(previous?.revision || 0)+1};
     if(shape !== 'slice') {
         fx.center = Array.from({length:3},()=> (Math.random()*2-1)*0.3);
-        fx.radius = shape === 'sphere' ? 1.05+Math.random()*0.9 : 1.5+Math.random();
+        const contained=Math.random()<0.65;
+        fx.radius = shape === 'sphere' ? (contained?0.4+Math.random()*0.3:0.9+Math.random()*0.95)
+            : (contained?0.55+Math.random()*0.3:1.05+Math.random()*1.3);
+        if(shape==='triangle'&&contained)fx.thickness=0.3+Math.random()*0.5;
         if(shape === 'triangle') {
             const t=[[-0.7-Math.random()*0.15,-0.45],[0.8+Math.random()*0.15,-0.3],[-0.1,0.8+Math.random()*0.1]];
             const c=[0,1].map(i=>t.reduce((sum,v)=>sum+v[i],0)/3);
             fx.triangle=t.map(v=>v.map((x,i)=>x-c[i]));
+            if(contained) {
+                const frame=roomFXFrame(fx,{x:2,y:2,z:2});
+                const fit=Math.min(1,...[0,1,2].map(i=>{
+                    const extent=Math.max(...fx.triangle.map(([x,y])=>Math.abs(frame.u[i]*x*fx.radius+frame.v[i]*y*fx.radius)))+
+                        Math.abs(frame.n[i])*fx.thickness/2;
+                    return (0.95-Math.abs(fx.center[i]))/extent;
+                }));
+                fx.radius*=fit;fx.thickness*=fit;
+            }
         }
     }
     return fx;
