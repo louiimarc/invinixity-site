@@ -28,6 +28,50 @@ const speakerLayouts = {
     surround: {channels:6, mains:[0,1,4,5], sub:3}
 };
 
+// Every output channel passes through the same three shape slots. Processing
+// after spatial panning keeps stereo/HRTF and discrete 4.1 channel placement.
+class MasterFXBus {
+    constructor(context,channels) {
+        this.context=context;this.channels=channels;
+        this.input=context.createGain();this.input.channelCount=channels;this.input.channelCountMode='explicit';
+        this.output=context.createGain();this.output.channelCount=channels;this.output.channelCountMode='explicit';
+        this.build();this.output.connect(context.destination);
+    }
+    build() {
+        this.splitter=this.context.createChannelSplitter(this.channels);
+        this.merger=this.context.createChannelMerger(this.channels);
+        this.input.connect(this.splitter);this.chains=[];
+        for(let i=0;i<this.channels;i++) {
+            const gain=this.context.createGain();this.splitter.connect(gain,i);
+            let node=gain;const inserts=[];
+            for(let j=0;j<3;j++) {
+                const insert=new RoomFXInsert(this.context,node);insert.update(null,0);
+                inserts.push(insert);node=insert.output;
+            }
+            node.connect(this.merger,0,i);this.chains.push({gain,inserts});
+        }
+        this.merger.connect(this.output);
+    }
+    update(frame,at) {
+        if(!frame)return;
+        const when=this.context.currentTime+Math.max(0,(at-playback.now())/1000);
+        const shapes=['slice','sphere','triangle'];
+        for(const chain of this.chains) chain.inserts.forEach((insert,i)=>{
+            const fx=frame.effects[shapes[i]];
+            insert.update(fx,roomFXDepth(fx,frame.p,frame.bounds),when);
+        });
+    }
+    flush() {
+        this.input.disconnect();this.splitter.disconnect();this.merger.disconnect();
+        for(const chain of this.chains){chain.gain.disconnect();chain.inserts.forEach(insert=>insert.dispose());}
+        this.build();
+    }
+    dispose() {
+        this.input.disconnect();this.splitter.disconnect();this.merger.disconnect();this.output.disconnect();
+        for(const chain of this.chains){chain.gain.disconnect();chain.inserts.forEach(insert=>insert.dispose());}
+    }
+}
+
 class SpatialOutput {
     constructor(context) {
         this.context = context;
@@ -46,7 +90,7 @@ class SpatialOutput {
         this.setMode(saved);
         this.select.onchange = () => {
             bassSound.silence();
-            entity.forEach(box => box.sound.silence());
+            entity.forEach(box => {box.sound.silence();box.percussion.silence();});
             this.setMode(this.select.value);
             try { localStorage.setItem('axelerometric.output', this.select.value); } catch {}
         };
@@ -55,17 +99,21 @@ class SpatialOutput {
     setMode(mode) {
         const dest = this.context.destination;
         if (this.merger) this.merger.disconnect();
+        if (this.master) this.master.dispose();
         this.merger = null;
         this.layout = speakerLayouts[mode];
         if (this.layout && dest.maxChannelCount >= this.layout.channels) {
             try {
                 const merger = this.context.createChannelMerger(this.layout.channels);
                 dest.channelCount = this.layout.channels;
-                merger.connect(dest);
+                // Route the discrete merger through the master bus below.
                 this.merger = merger;
             } catch { /* A device change can invalidate its reported channel count. */ }
         }
         if (!this.merger && dest.maxChannelCount >= 2) dest.channelCount = 2;
+        this.master=new MasterFXBus(this.context,this.merger?this.layout.channels:2);
+        if(this.merger)this.merger.connect(this.master.input);
+        this.master.output.connect(this.meter);
         this.stopTracking();
         if (mode === 'tracked' && this.select.querySelector('[value="tracked"]').disabled) mode = 'headphones';
         this.headphones = mode === 'headphones' || mode === 'tracked';
@@ -146,7 +194,6 @@ class SpatialOutput {
             low.connect(this.merger, 0, this.layout.sub);
             nodes.push(low);
         }
-        gain.connect(this.meter);
         return nodes;
     }
 }
@@ -179,10 +226,9 @@ class RoomFXInsert {
         this.lfo.connect(this.modulation); this.modulation.connect(this.output.gain); this.lfo.start();
         this.nodes = [this.filter,this.drive,this.dry,this.wet,this.sum,this.delay,this.feedback,this.echo,this.output,this.modulation,this.lfo];
     }
-    update(fx, depth) {
+    update(fx, depth, time = this.context.currentTime) {
         const type = fx?.type;
         const amount = Math.max(0, Math.min(1, depth));
-        const time = this.context.currentTime;
         const smooth = (param, value) => {
             param.cancelScheduledValues(time);
             param.setTargetAtTime(value,time,0.025);
@@ -215,16 +261,7 @@ class SoundEngine {
         this.analyser = context.createAnalyser();
         this.analyser.smoothingTimeConstant = 0;
         this.sources = new Set();
-        this.inserts = new Set();
-        this.fx = null;
-        this.fxDepth = 0;
         this.lastTime = -1;
-    }
-
-    setFX(fx, depth) {
-        this.fx = fx;
-        this.fxDepth = depth;
-        for (const insert of this.inserts) insert.update(fx, depth);
     }
 
     play(voice, frequency, time, duration, pan, face, position = [pan,0,0]) {
@@ -232,9 +269,10 @@ class SoundEngine {
         if (Math.abs(this.lastTime - time) < 0.001) return;
         this.lastTime = time;
         const ctx = this.context;
-        const hat = voice === 'closed-hat';
+        const snare=voice==='snare';
+        const hat = voice === 'closed-hat' || snare;
         if (hat && !this.hatNoise) {
-            this.hatNoise = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.08), ctx.sampleRate);
+            this.hatNoise = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.16), ctx.sampleRate);
             const data = this.hatNoise.getChannelData(0);
             let previous = 0;
             for (let i = 0; i < data.length; i++) {
@@ -266,18 +304,13 @@ class SoundEngine {
             gain.gain.value = 0.22;
         } else {
             gain.gain.setValueAtTime(0, time);
-            const peak = kick ? 0.4 : hat ? 0.19 : 0.12;
+            const peak = kick ? 0.4 : snare ? 0.14 : hat ? 0.19 : 0.12;
             gain.gain.linearRampToValueAtTime(peak, time + Math.min(0.004, duration / 3));
             if (kick) gain.gain.exponentialRampToValueAtTime(0.11, time + duration * 0.48);
             gain.gain.exponentialRampToValueAtTime(0.0001, end);
         }
         source.connect(gain);
-        const insert = !kick && !hat ? new RoomFXInsert(ctx, gain) : null;
-        const signal = insert ? insert.output : gain;
-        if (insert) {
-            insert.update(this.fx, this.fxDepth);
-            this.inserts.add(insert);
-        }
+        const signal=gain;
         let routes;
         if (spatialOutput.merger) {
             routes = spatialOutput.route(signal, position, kick);
@@ -290,25 +323,15 @@ class SoundEngine {
                     positionY:-position[1], positionZ:-position[2], rolloffFactor:0})
                 : new StereoPannerNode(ctx, {pan});
             signal.connect(panner);
-            panner.connect(this.output);
+            panner.connect(spatialOutput.master.input);
             panner.connect(this.analyser);
             routes = [panner];
         }
         this.sources.add(source);
-        const cleanup = () => {
-            clearTimeout(insert?.tailTimer);
-            source.disconnect();
-            gain.disconnect();
-            for (const node of routes) node.disconnect();
-            if (insert) { insert.dispose(); this.inserts.delete(insert); }
-            this.sources.delete(source);
-        };
-        if (insert) insert.cleanup = cleanup;
         source.onended = () => {
-            // Allow an echo to ring out while continuing to respond to the barrier.
-            if (insert && this.fx?.type === 'echo' && !insert.disposed) {
-                insert.tailTimer = setTimeout(cleanup, 1100);
-            } else cleanup();
+            source.disconnect();gain.disconnect();
+            for(const node of routes)node.disconnect();
+            this.sources.delete(source);
         };
         source.start(time);
         source.stop(end);
@@ -316,7 +339,6 @@ class SoundEngine {
 
     silence() {
         for (const source of this.sources) source.stop();
-        for (const insert of [...this.inserts]) insert.cleanup();
         this.lastTime = -1;
     }
 }

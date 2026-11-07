@@ -19,6 +19,7 @@ function setBoxCount(value) {
     const count = Math.max(0, Math.min(numberOfEntity, Math.round(value)));
     for (let i = count; i < numberOfShownEntity; i++) {
         entity[i].sound.silence();
+        entity[i].percussion.silence();
         entity[i].lastNote = -Infinity;
     }
     if (soloIndex >= count) applySolo(-1);
@@ -40,7 +41,8 @@ async function toggleSound() {
         if (sounding) {
             sounding = false;
             bassSound.silence();
-            entity.forEach(box => { box.sound.silence(); box.lastNote = -Infinity; });
+            spatialOutput.master.flush();
+            entity.forEach(box => { box.sound.silence(); box.percussion.silence(); box.lastNote = -Infinity; });
         } else {
             await userStartAudio();
             sounding = getAudioContext().state === 'running';

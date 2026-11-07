@@ -18,7 +18,7 @@ function setup() {
     audioContext = new AudioContext();
     spatialOutput = new SpatialOutput(audioContext);
     bassSound = new SoundEngine(audioContext, audioContext.destination);
-    for (let i = 0; i < numberOfEntity; i++) entity.push({sound:new SoundEngine(audioContext, audioContext.destination)});
+    for (let i = 0; i < numberOfEntity; i++) entity.push({sound:new SoundEngine(audioContext, audioContext.destination),percussion:new SoundEngine(audioContext, audioContext.destination)});
     spectrumView = new SpectrumView(entity[0].sound.analyser);
     roomFX.setup();
     setupSoloInputs();
@@ -65,12 +65,14 @@ async function loadLocalFiles(files) {
 function resetView(message) {
     playback.frames.length = 0;
     applySolo(-1);
-    roomFX.syncPanel(-1, null);
+    roomFX.viewMaster=null;
+    roomFX.syncPanel();
+    spatialOutput.master.flush();
     localOrbit = false;
     spectrumView.draw([], 0, []);
     bassChamber.clear();
     bassSound.silence();
-    entity.forEach(box => box.sound.silence());
+    entity.forEach(box => {box.sound.silence();box.percussion.silence();});
     lastPacket = 0;
     lastCount = 0;
     remoteSound = false;
@@ -90,14 +92,17 @@ function receive(packet) {
     }
     lastPacket = performance.now();
     if (remoteSound && !frame.sounding) {
+        spatialOutput.master.flush();
         bassSound.silence();
-        entity.forEach(box => box.sound.silence());
+        entity.forEach(box => {box.sound.silence();box.percussion.silence();});
     }
     const activeCount = frame.activeCount ?? frame.boxes.length;
-    for (let i = activeCount; i < lastCount; i++) entity[i].sound.silence();
+    for (let i = activeCount; i < lastCount; i++) {entity[i].sound.silence();entity[i].percussion.silence();}
     applySolo(frame.solo ?? -1);
     lastCount = activeCount;
     remoteSound = frame.sounding;
+    roomFX.viewMaster=frame.master;
+    spatialOutput.master.update(frame.master,frame.at);
     playback.receive(frame);
     if (!entered || !remoteSound) return;
     if (frame.hat) scheduleNote(frame.hat, bassSound, audioContext);
@@ -105,7 +110,7 @@ function receive(packet) {
     for (const note of notes) {
         if (note.i >= activeCount || (soloIndex >= 0 && note.i !== soloIndex)) continue;
         if (note.voice.startsWith('file:') && !samples.has(note.voice)) continue;
-        scheduleNote(note, entity[note.i].sound, audioContext);
+        scheduleNote(note, note.voice==='snare'?entity[note.i].percussion:entity[note.i].sound, audioContext);
     }
 }
 

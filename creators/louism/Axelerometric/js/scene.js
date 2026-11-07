@@ -28,14 +28,14 @@ const playback = {
         const weights = a.boxes.map((box, i) => lerp(box.opacity ?? 1, b.boxes[i]?.opacity ?? (b === a ? 1 : 0), t));
         const solo = a.solo ?? -1;
         spectrumView.draw(weights, merge, a.boxes, solo);
-        roomFX.syncPanel(isPresentation ? solo : soloIndex, isPresentation ? a.boxes[solo]?.fx : entity[soloIndex]?.fx,
-            isPresentation ? a.boxes[solo]?.fxShape || 'slice' : entity[soloIndex]?.fxShape || entity[soloIndex]?.fx?.shape || 'slice');
-        if (!a.boxes.length) return;
+        roomFX.syncPanel();
         const count = a.boxes.length;
         const radius = a.radius === undefined ? (count > 1 ? 180 / Math.sin(Math.PI / count) : 0)
             : lerp(a.radius, b.radius ?? a.radius, t);
-        const overviewScale = Math.min(width, height) / lerp(radius * 2 + 330, 300 * 1.85, merge);
-        const selected = a.boxes[solo], nextSelected = b.boxes[solo] || selected;
+        const overviewScale = Math.min(width, height) / (count ? lerp(radius * 2 + 330, 300 * 1.85, merge) : 420);
+        const masterFocused=!!a.master?.focused;
+        const selected = masterFocused?{bounds:a.master.bounds,cx:0,cy:0}:a.boxes[solo];
+        const nextSelected = masterFocused?selected:b.boxes[solo] || selected;
         const focus = this.focus;
         const dt = Math.min(100, Math.max(0, time - focus.at));
         const smooth = matchMedia('(prefers-reduced-motion: reduce)').matches ? 1 : 1 - Math.exp(-dt / 150);
@@ -52,6 +52,23 @@ const playback = {
         const gl = window._renderer;
         this.pickMatrix = new DOMMatrix(gl.uPMatrix.mat4).multiply(new DOMMatrix(gl.uViewMatrix.mat4))
             .multiply(new DOMMatrix(gl.uModelMatrix.mat4));
+        if(a.master) {
+            const master=a.master,nextMaster=b.master||master,bounds=master.bounds;
+            const point=master.p.map((v,i)=>lerp(v,nextMaster.p[i],t));
+            const opacity=solo>=0?0.2:1;
+            push();
+            this.targets.push({i:-2,center:[0,0,0],size:[bounds.x,bounds.y,bounds.z]});
+            for(const [shape,fx] of Object.entries(master.effects)) {
+                roomFX.drawBarrier('master-'+shape,fx,bounds,point,
+                    {slice:200,sphere:160,triangle:38}[shape],opacity,time);
+            }
+            noFill();stroke(175,182,190,opacity*255);strokeWeight(masterFocused?2:1.2);
+            box(bounds.x,bounds.y,bounds.z);drawFrontMarker(bounds.x,bounds.y,bounds.z);
+            push();translate(0,-bounds.y/2-18,0);noStroke();fill(200,206,215,opacity*255);
+            textSize(12);text('MASTER FX',0,0);pop();
+            translate(...point);noStroke();fill(230,233,238,opacity*255);sphere(8,16,12);
+            pop();
+        }
         if (merge > 0.75) {
             push();
             const opacity = Math.min(1, weights.reduce((sum, w) => sum + w, 0)) * (merge - 0.75) * 4;
@@ -77,7 +94,7 @@ const playback = {
             sphere.radius = 8;
             sphere.hue = state.hue;
             sphere.waveform = state.waveform;
-            const muted = solo >= 0 && i !== solo;
+            const muted = masterFocused || solo >= 0 && i !== solo;
             sphere.flash = muted ? 0 : state.flash;
             sphere.faceGlow = state.glow;
             push();
@@ -89,11 +106,9 @@ const playback = {
                 this.targets.push(merge > 0.9 ? {i, center:[cx+x,cy+y,z], size:[30,30,30]} :
                     {i, center:[cx,cy,0], size:[state.bounds.x,state.bounds.y,state.bounds.z]});
             }
-            const fx = state.fx ?? null;
-            if (isPresentation) { entity[i].fx = fx; entity[i].fxShape = state.fxShape || fx?.shape || 'slice'; }
-            entity[i].sound.setFX(fx, roomFXDepth(fx, [sphere.position.x,sphere.position.y,sphere.position.z], state.bounds));
-            roomFX.drawBarrier(i, fx, state.bounds, [sphere.position.x,sphere.position.y,sphere.position.z],
-                state.hue, weights[i] * (muted ? 0.12 : 1), time);
+            const sliceFlash=Math.max(0,1-(time-(state.sliceHitAt??-1))/160);
+            roomFX.drawBarrier(i,state.slice,state.bounds,[sphere.position.x,sphere.position.y,sphere.position.z],
+                state.hue,weights[i]*(muted?0.12:0.65+sliceFlash*0.35),time);
             sphere.display(state.bounds, i, i === (solo < 0 ? a.selected : solo), merge,
                 weights[i] * (muted ? 0.15 : 1), muted);
             pop();

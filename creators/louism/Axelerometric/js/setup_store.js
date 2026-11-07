@@ -10,9 +10,11 @@ function saveSetup() {
         count: numberOfShownEntity, solo: soloIndex, selected: selectedChamber,
         room: control('room-motion').value, expanded: document.querySelector('.console').open,
         hatDivision: hatPlane.division,
+        master:{effects:masterChamber.effects,selectedShape:masterChamber.selectedShape,focused:masterFocused,
+            position:masterChamber.sphere.position.array(),direction:masterChamber.sphere.direction.array()},
         camera: sceneCamera, cc: midi.ccValues,
-        chambers: entity.map(({voice, degree, sphere, fx, fxShape}) => ({
-            fx, fxShape,
+        chambers: entity.map(({voice, degree, sphere, slice}) => ({
+            slice,
             voice, degree, hue: sphere.hue,
             position: sphere.position.array(), direction: sphere.direction.array()
         }))
@@ -59,8 +61,7 @@ function restoreSetup() {
     for (const [i, box] of entity.entries()) {
         const saved = state.chambers[i];
         if (!saved) continue;
-        box.fx = validRoomFX(saved.fx) ? saved.fx : null;
-        box.fxShape = Object.hasOwn(roomFXShapes,saved.fxShape) ? saved.fxShape : box.fx?.shape || 'slice';
+        box.slice=validRoomFX(saved.slice)?saved.slice:box.slice;
         if (typeof saved.voice === 'string' && /^file:\d+:/.test(saved.voice)) {
             sampleOption(saved.voice, saved.voice.replace(/^file:\d+:/, ''));
             box.voice = saved.voice;
@@ -69,6 +70,18 @@ function restoreSetup() {
         if (Number.isFinite(saved.hue)) box.sphere.hue = saved.hue;
         if (validVector(saved.position)) box.sphere.position.set(...saved.position);
         if (validVector(saved.direction) && Math.hypot(...saved.direction) > 0) box.sphere.direction.set(...saved.direction).normalize();
+    }
+    if(state.master) {
+        const used=new Set();
+        for(const shape of Object.keys(roomFXShapes)) {
+            const fx=state.master.effects?.[shape];
+            masterChamber.effects[shape]=validRoomFX(fx) && fx.shape===shape && !used.has(fx.type)?fx:null;
+            if(masterChamber.effects[shape])used.add(fx.type);
+        }
+        if(Object.hasOwn(roomFXShapes,state.master.selectedShape))masterChamber.selectedShape=state.master.selectedShape;
+        if(validVector(state.master.position))masterChamber.sphere.position.set(...state.master.position);
+        if(validVector(state.master.direction)&&Math.hypot(...state.master.direction)>0)masterChamber.sphere.direction.set(...state.master.direction).normalize();
+        masterFocused=state.master.focused===true;
     }
     if (Number.isInteger(state.selected)) selectedChamber = Math.max(0, state.selected);
     setBoxCount(Number.isInteger(state.count) ? state.count : numberOfShownEntity);

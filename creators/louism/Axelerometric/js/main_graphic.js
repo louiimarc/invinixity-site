@@ -58,7 +58,7 @@ function pumpSimulation() {
             return progress * progress * (3 - 2 * progress);
         });
         const slots = weights.reduce((sum, weight) => sum + weight, 0);
-        const radius = ringRadius(slots);
+        const radius = Math.max(285,ringRadius(slots)+70);
         let arc = 0;
         const cc = n => midi.getValue('cc', n) / 127;
         const heightCC = cc(27);
@@ -67,6 +67,10 @@ function pumpSimulation() {
         // Each quarter note lands on the opposite cap of the bass chamber.
         frame.bassBeat = clock.beatAt(nextFrame / 1000);
         advancePlane(frame);
+        masterChamber.sphere.update(beats,masterChamber.bounds);
+        frame.master={p:masterChamber.sphere.position.array(),bounds:masterChamber.bounds,
+            effects:masterChamber.effects,selectedShape:masterChamber.selectedShape,focused:masterFocused};
+        spatialOutput.master.update(frame.master,nextFrame);
         const beat = Math.ceil(frame.bassBeat);
         const delay = (beat - frame.bassBeat) * 60000 / clock.bpm;
         if (sounding && beat !== lastKickBeat && delay < stepMs) {
@@ -91,6 +95,9 @@ function pumpSimulation() {
             const displayCoordinate = (point, axis) => point[axis] * (bounds[axis]/2 - sphere.radius) /
                 (local[axis]/2 - sphere.radius);
             let impact;
+            const slice=entity[i].slice;
+            const signed=point=>slice.normal.reduce((sum,n,j)=>sum+n*point[['x','y','z'][j]]/(local[['x','y','z'][j]]/2),0)-slice.offset;
+            const before=signed(sphere.position);
             const face = sphere.update(beats, local, (face, point, fraction) => {
                 impact = point;
                 if (merge <= 0.75 || i >= count) return;
@@ -101,7 +108,20 @@ function pumpSimulation() {
             });
             const p = ['x','y','z'].map(axis => displayCoordinate(sphere.position, axis));
             const waveform = Object.hasOwn(wallWaveforms, voice) ? voice : undefined;
-            frame.boxes.push({cx, cy, opacity, p, bounds, waveform, fx:entity[i].fx ?? null, fxShape:entity[i].fxShape || entity[i].fx?.shape || 'slice', hue:sphere.hue, flash:sphere.flash, glow:sphere.faceGlow.slice()});
+            frame.boxes.push({cx, cy, opacity, p, bounds, waveform, slice, sliceHitAt:entity[i].sliceHitAt, hue:sphere.hue, flash:sphere.flash, glow:sphere.faceGlow.slice()});
+            const after=signed(sphere.position);
+            if(i<count && before*after<0) {
+                const fraction=Math.abs(before)/(Math.abs(before)+Math.abs(after));
+                const at=nextFrame-(1-fraction)*stepMs;
+                entity[i].sliceHitAt=at;
+                frame.boxes[frame.boxes.length-1].sliceHitAt=at;
+                if(sounding && (soloIndex<0 || i===soloIndex)) {
+                    const note={i,voice:'snare',at:clock.nextHit(at/1000,hitGrid)*1000,
+                        duration:0.12,pan:constrain(p[0]/(bounds.x/2),-1,1),
+                        position:p.map((v,j)=>constrain(v/(bounds[['x','y','z'][j]]/2),-1,1))};
+                    scheduleNote(note,entity[i].percussion,getAudioContext());notes.push(note);
+                }
+            }
             if (i >= count || face < 0 || !sounding || (soloIndex >= 0 && i !== soloIndex)) continue;
             const pitch = degree + face;
             const position = ['x','y','z'].map(axis => constrain(impact[axis] / (local[axis]/2 - sphere.radius), -1, 1));
@@ -130,7 +150,7 @@ function draw() {
     const camera = this._renderer._curCamera;
     sceneCamera = [camera.eyeX, camera.eyeY, camera.eyeZ, camera.centerX, camera.centerY, camera.centerZ]
         .map(v => v / height).concat(camera.upX, camera.upY, camera.upZ);
-    if (frameCount % 4 === 0) control('level').value = spatialOutput.merger ? spatialOutput.level() : outputLevel.getLevel();
+    if (frameCount % 4 === 0) control('level').value = spatialOutput.level();
     pumpSimulation();
     playback.draw();
 }

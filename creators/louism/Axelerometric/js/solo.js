@@ -4,11 +4,13 @@ let soloIndex = -1;
 function applySolo(index) {
     if (index === soloIndex) return;
     soloIndex = index;
-    if (typeof roomFX !== 'undefined') roomFX.syncPanel(index, index >= 0 ? entity[index]?.fx : null);
+    if(index>=0)masterFocused=false;
+    roomFX.syncPanel();
     if (index < 0) return;
     entity.forEach((box, i) => {
         if (i !== index) {
             box.sound.silence();
+            box.percussion.silence();
             box.lastNote = -Infinity;
         }
     });
@@ -21,7 +23,9 @@ function toggleSolo(index) {
 }
 
 function releaseSolo() {
+    masterFocused=false;
     applySolo(-1);
+    roomFX.syncPanel();
     queueSetupSave();
 }
 
@@ -55,11 +59,18 @@ function pickRoom(x, y) {
 
 function setupSoloInputs() {
     const request = i => {
+        if(i===-2) {
+            if(isPresentation)lan.send({type:'master-focus'});else focusMaster();
+            return;
+        }
         if (i < 0) return;
         if (isPresentation) lan.send({type:'solo', index:i});
         else toggleSolo(i);
     };
     window.addEventListener('keydown', e => {
+        if(e.key==='0' && !e.target.closest?.('input,select,textarea')) {
+            if(isPresentation)lan.send({type:'master-focus'});else focusMaster();return;
+        }
         if (e.key === 'Escape') {
             if (isPresentation) lan.send({type:'unsolo'});
             else releaseSolo();

@@ -14,12 +14,16 @@ function setup() {
     for (let i = 0; i < numberOfEntity; i++) {
         entity.push({
             sound: new SoundEngine(getAudioContext()),
+            percussion: new SoundEngine(getAudioContext()),
+            slice:randomPercussionSlice(), sliceHitAt:-1,
             sphere: new BouncingSphere(i),
             voice: defaultWaves[i],
             degree: i
         });
     }
     bassSound = new SoundEngine(getAudioContext());
+    masterChamber.sphere=new BouncingSphere(0);
+    masterChamber.sphere.speed=24;
     clock.origin = playback.now() / 1000;
     outputLevel = new p5.Amplitude(0.7);
     spectrumView = new SpectrumView(entity[0].sound.analyser);
@@ -37,9 +41,7 @@ function setup() {
             setHatDivision(hatPlane.division + data.delta);
             queueSetupSave();
         }
-        if (data.type === 'room-fx-shape') changeRoomFXShape(data.index, data.shape);
-        if (data.type === 'room-fx') chooseRoomFX(data.index, data.effect);
-        if (data.type === 'clear-fx') clearRoomFX(data.index);
+        handleChamberControl(data);
         if (data.type === 'unsolo') releaseSolo();
         if (data.type === 'solo') toggleSolo(data.index);
         if (data.type === 'info') {
