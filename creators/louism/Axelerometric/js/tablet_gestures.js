@@ -110,7 +110,7 @@ const tabletGestures={
         if(this.pointers.size<2)this.finishDial();
         if(this.pointers.size)return;
         const chord=this.chord;this.chord=null;
-        if(!chord||!chord.fx||chord.moved||chord.usedDial||event.timeStamp-chord.start>400||![1,2,4].includes(chord.max)) {
+        if(!chord||!chord.fx||chord.moved||chord.usedDial||event.timeStamp-chord.start>400||![1,2,3].includes(chord.max)) {
             this.lastTap=null;return;
         }
         const points=Array.from(chord.starts.values());
@@ -118,7 +118,7 @@ const tabletGestures={
         const previous=this.lastTap;
         if(previous&&previous.count===tap.count&&chord.start-previous.at<=450&&Math.hypot(tap.x-previous.x,tap.y-previous.y)<70) {
             this.lastTap=null;
-            const shape={1:'slice',2:'sphere',4:'tetrahedron'}[tap.count];
+            const shape={1:'slice',2:'sphere',3:'tetrahedron'}[tap.count];
             if(isPresentation)lan.send({type:'master-reroll',shape});else rerollMasterFX(shape);
         } else this.lastTap=tap;
     },

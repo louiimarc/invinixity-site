@@ -232,7 +232,7 @@ const roomFX = {
         this.panel.querySelector('.fx-shapes').hidden=!focused;
         this.panel.querySelector('[data-action="slice"]').hidden=focused;
         this.panel.querySelector('#fx-hint').textContent=focused
-            ?(tabletGestures.isTablet?'Double-tap · 1 finger Echo · 2 Stutter · 4 Bitcrush':'Tap a volume or its label to randomize · Tap outside to return')
+            ?(tabletGestures.isTablet?'Double-tap · 1 finger Echo · 2 Stutter · 3 Bitcrush':'Tap a volume or its label to randomize · Tap outside to return')
             :'Slice crossings trigger percussion · Tap below to reroll';
     },
     pickVolume(x,y) {
