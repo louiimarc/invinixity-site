@@ -151,6 +151,63 @@ class SpatialOutput {
     }
 }
 
+// A live insert per sounding voice preserves its own spatial position while
+// the room's barrier moves the FX on every voice, including sample tails.
+class RoomFXInsert {
+    static curve = Float32Array.from({length:2048}, (_, i) => {
+        const x = i * 2 / 2047 - 1;
+        return Math.tanh(x * 5) / Math.tanh(5);
+    });
+    constructor(context, input) {
+        this.context = context;
+        this.filter = context.createBiquadFilter(); this.filter.type = 'allpass';
+        this.drive = context.createWaveShaper(); this.drive.curve = RoomFXInsert.curve;
+        this.dry = context.createGain(); this.wet = context.createGain(); this.wet.gain.value = 0;
+        this.sum = context.createGain();
+        this.delay = context.createDelay(1); this.delay.delayTime.value = 0.18;
+        this.feedback = context.createGain(); this.feedback.gain.value = 0.28;
+        this.echo = context.createGain(); this.echo.gain.value = 0;
+        this.output = context.createGain();
+        this.lfo = context.createOscillator(); this.lfo.frequency.value = 5;
+        this.modulation = context.createGain(); this.modulation.gain.value = 0;
+        input.connect(this.filter);
+        this.filter.connect(this.dry); this.dry.connect(this.sum);
+        this.filter.connect(this.drive); this.drive.connect(this.wet); this.wet.connect(this.sum);
+        this.sum.connect(this.output);
+        this.sum.connect(this.delay); this.delay.connect(this.feedback); this.feedback.connect(this.delay);
+        this.delay.connect(this.echo); this.echo.connect(this.output);
+        this.lfo.connect(this.modulation); this.modulation.connect(this.output.gain); this.lfo.start();
+        this.nodes = [this.filter,this.drive,this.dry,this.wet,this.sum,this.delay,this.feedback,this.echo,this.output,this.modulation,this.lfo];
+    }
+    update(fx, depth) {
+        const type = fx?.type;
+        const amount = Math.max(0, Math.min(1, depth));
+        const time = this.context.currentTime;
+        const smooth = (param, value) => {
+            param.cancelScheduledValues(time);
+            param.setTargetAtTime(value,time,0.025);
+        };
+        const filterType = ['lowpass','highpass','bandpass'].includes(type) ? type : 'allpass';
+        if (this.filter.type !== filterType) this.filter.type = filterType;
+        const ceiling = Math.min(20000,this.context.sampleRate * 0.45);
+        const frequency = type === 'lowpass' ? ceiling * (350 / ceiling) ** amount
+            : type === 'highpass' ? 20 * (2200 / 20) ** amount : 1100;
+        smooth(this.filter.frequency, frequency);
+        smooth(this.filter.Q, type === 'bandpass' ? 0.001 * 2500 ** amount : 0.707);
+        smooth(this.wet.gain, type === 'drive' ? amount : 0);
+        smooth(this.dry.gain, type === 'drive' ? 1 - amount : 1);
+        smooth(this.echo.gain, type === 'echo' ? amount * 0.5 : 0);
+        smooth(this.output.gain, type === 'tremolo' ? 1 - amount * 0.4 : 1);
+        smooth(this.modulation.gain, type === 'tremolo' ? amount * 0.4 : 0);
+    }
+    dispose() {
+        if (this.disposed) return;
+        this.disposed = true;
+        this.lfo.stop();
+        this.nodes.forEach(node => node.disconnect());
+    }
+}
+
 class SoundEngine {
     constructor(context, output = p5.soundOut.input) {
         this.context = context;
@@ -158,7 +215,16 @@ class SoundEngine {
         this.analyser = context.createAnalyser();
         this.analyser.smoothingTimeConstant = 0;
         this.sources = new Set();
+        this.inserts = new Set();
+        this.fx = null;
+        this.fxDepth = 0;
         this.lastTime = -1;
+    }
+
+    setFX(fx, depth) {
+        this.fx = fx;
+        this.fxDepth = depth;
+        for (const insert of this.inserts) insert.update(fx, depth);
     }
 
     play(voice, frequency, time, duration, pan, face, position = [pan,0,0]) {
@@ -206,10 +272,16 @@ class SoundEngine {
             gain.gain.exponentialRampToValueAtTime(0.0001, end);
         }
         source.connect(gain);
+        const insert = !kick && !hat ? new RoomFXInsert(ctx, gain) : null;
+        const signal = insert ? insert.output : gain;
+        if (insert) {
+            insert.update(this.fx, this.fxDepth);
+            this.inserts.add(insert);
+        }
         let routes;
         if (spatialOutput.merger) {
-            routes = spatialOutput.route(gain, position, kick);
-            gain.connect(this.analyser);
+            routes = spatialOutput.route(signal, position, kick);
+            signal.connect(this.analyser);
         } else {
             // The chamber's +Y points down and +Z points to its marked front.
             // Web Audio's fixed listener faces -Z with +Y up.
@@ -217,17 +289,26 @@ class SoundEngine {
                 ? new PannerNode(ctx, {panningModel:'HRTF', positionX:position[0],
                     positionY:-position[1], positionZ:-position[2], rolloffFactor:0})
                 : new StereoPannerNode(ctx, {pan});
-            gain.connect(panner);
+            signal.connect(panner);
             panner.connect(this.output);
             panner.connect(this.analyser);
             routes = [panner];
         }
         this.sources.add(source);
-        source.onended = () => {
+        const cleanup = () => {
+            clearTimeout(insert?.tailTimer);
             source.disconnect();
             gain.disconnect();
             for (const node of routes) node.disconnect();
+            if (insert) { insert.dispose(); this.inserts.delete(insert); }
             this.sources.delete(source);
+        };
+        if (insert) insert.cleanup = cleanup;
+        source.onended = () => {
+            // Allow an echo to ring out while continuing to respond to the barrier.
+            if (insert && this.fx?.type === 'echo' && !insert.disposed) {
+                insert.tailTimer = setTimeout(cleanup, 1100);
+            } else cleanup();
         };
         source.start(time);
         source.stop(end);
@@ -235,6 +316,7 @@ class SoundEngine {
 
     silence() {
         for (const source of this.sources) source.stop();
+        for (const insert of [...this.inserts]) insert.cleanup();
         this.lastTime = -1;
     }
 }

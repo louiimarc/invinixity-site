@@ -84,6 +84,17 @@ server.on('upgrade', (req, socket, head) => {
                     viewers.add(ws);
                     ws.send(JSON.stringify(latest ? {type:'frame',frame:latest,notes:pending.filter(n=>n.at>Date.now())} : {type:'waiting'}));
                 }
+            } else if (presenter && ['room-fx','clear-fx','room-fx-shape'].includes(msg?.type) &&
+                Number.isInteger(msg.index) && msg.index === latest?.solo && msg.index >= 0 &&
+                msg.index < latest.activeCount && (msg.type === 'clear-fx' ||
+                    (msg.type === 'room-fx-shape' && ['slice','sphere','triangle'].includes(msg.shape)) ||
+                    ['lowpass','highpass','bandpass','drive','echo','tremolo'].includes(msg.effect)) &&
+                host?.readyState === WebSocket.OPEN) {
+                host.send(JSON.stringify({type:msg.type, index:msg.index, effect:msg.effect, shape:msg.shape}));
+            } else if (presenter && msg?.type === 'unsolo' && host?.readyState === WebSocket.OPEN) {
+                host.send(JSON.stringify({type:'unsolo'}));
+            } else if (presenter && msg?.type === 'hat-step' && [1,-1].includes(msg.delta) && host?.readyState === WebSocket.OPEN) {
+                host.send(JSON.stringify({type:'hat-step', delta:msg.delta}));
             } else if (presenter && msg?.type === 'solo' && Number.isInteger(msg.index) &&
                 msg.index >= 0 && msg.index < (latest?.activeCount ?? 0) && host?.readyState === WebSocket.OPEN) {
                 host.send(JSON.stringify({type:'solo', index:msg.index}));

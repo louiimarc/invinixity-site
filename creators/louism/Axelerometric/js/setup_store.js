@@ -9,9 +9,10 @@ function saveSetup() {
         bpm: clock.bpm, grid: hitGrid, scale: control('scale').value,
         count: numberOfShownEntity, solo: soloIndex, selected: selectedChamber,
         room: control('room-motion').value, expanded: document.querySelector('.console').open,
-        planeHeight: hatPlane.height, randomPlane: hatPlane.randomize,
+        hatDivision: hatPlane.division,
         camera: sceneCamera, cc: midi.ccValues,
-        chambers: entity.map(({voice, degree, sphere}) => ({
+        chambers: entity.map(({voice, degree, sphere, fx, fxShape}) => ({
+            fx, fxShape,
             voice, degree, hue: sphere.hue,
             position: sphere.position.array(), direction: sphere.direction.array()
         }))
@@ -54,14 +55,12 @@ function restoreSetup() {
         control('scale').value = state.scale;
         activeScale = scales[state.scale];
     }
-    if (Number.isFinite(state.planeHeight)) hatPlane.height = Math.max(0.15, Math.min(0.85, state.planeHeight));
-    hatPlane.randomize = state.randomPlane === true;
-    control('plane-height').value = Math.round(hatPlane.height * 100);
-    control('plane-height').disabled = hatPlane.randomize;
-    control('plane-mode').value = hatPlane.randomize ? 'random' : 'fixed';
+    setHatDivision(Number.isInteger(state.hatDivision) ? state.hatDivision : 1);
     for (const [i, box] of entity.entries()) {
         const saved = state.chambers[i];
         if (!saved) continue;
+        box.fx = validRoomFX(saved.fx) ? saved.fx : null;
+        box.fxShape = Object.hasOwn(roomFXShapes,saved.fxShape) ? saved.fxShape : box.fx?.shape || 'slice';
         if (typeof saved.voice === 'string' && /^file:\d+:/.test(saved.voice)) {
             sampleOption(saved.voice, saved.voice.replace(/^file:\d+:/, ''));
             box.voice = saved.voice;

@@ -51,7 +51,7 @@ body.present { height: 100dvh; grid-template-rows: minmax(0,1fr); overflow: hidd
 #lan-link { display: block; color: #a6e9d7; overflow-wrap: anywhere; }
 #qr-dialog form { margin-top: 16px; }
 .workspace { grid-template-columns: clamp(54px, 13vw, 154px) minmax(0,1fr) clamp(44px, 10vw, 128px); padding-right: clamp(4px, 1.5vw, 24px); }
-#bass-chamber { width: 100%; height: 100%; min-width: 0; min-height: 0; pointer-events: none; }
+#bass-chamber { width: 100%; height: 100%; min-width: 0; min-height: 0; touch-action: none; }
 #stage, #spectrum-plot { min-width: 0; }
 @media (orientation: portrait) {
     body { height: 100dvh; }
@@ -65,3 +65,33 @@ body.present { height: 100dvh; grid-template-rows: minmax(0,1fr); overflow: hidd
     #stage { grid-area: rooms; }
     #spectrum-plot { grid-area: spectra; }
 }
+
+#stage { position: relative; }
+.room-fx { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.room-fx[hidden] { display: none; }
+.room-fx button { pointer-events: auto; touch-action: manipulation; max-width: none; }
+.fx-heading { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #a6e9d7; font-size: 12px; }
+.fx-heading button { font-size: 11px; height: 30px; background: #101a2ce8; }
+.fx-bank { position: absolute; top: 50%; transform: translateY(-50%); display: grid; gap: 12px; width: 100px; }
+.fx-bank-left { left: 12px; }
+.fx-bank-right { right: 12px; }
+.fx-bank button { height: 44px; font-size: 12px; background: #101a2ce8; border-color: #61718a; transition: opacity 180ms, background 180ms, border-color 180ms; }
+.fx-bank button[aria-pressed="true"] { color: #a6e9d7; border-color: #a6e9d7; background: #18372fe8; box-shadow: 0 0 20px #a6e9d714; }
+.fx-bank button:disabled { opacity: 0.28; color: #8491a4; border-color: #35445e; cursor: default; }
+.room-fx button:focus-visible { outline: 2px solid #a6e9d7; outline-offset: 3px; }
+.fx-footer { position: absolute; bottom: 14px; left: 12px; right: 12px; display: grid; justify-items: center; gap: 6px; text-align: center; }
+.fx-footer p { font-size: 11px; color: #aebed0; margin: 0; padding: 5px 9px; border-radius: 4px; background: #090f1ed9; }
+.fx-footer button { font-size: 11px; height: 27px; background: #101a2ce8; }
+@media (max-width: 700px) {
+    .fx-bank { width: 65px; gap: 9px; }
+    .fx-bank-left { left: 4px; }
+    .fx-bank-right { right: 4px; }
+    .fx-bank button { font-size: 10px; padding: 4px; height: 40px; }
+    .fx-heading { top: 10px; left: 8px; right: 8px; }
+    .fx-footer { bottom: 6px; }
+}
+@media (prefers-reduced-motion: reduce) { .fx-bank button { transition: none; } }
+.fx-shapes { display: flex; justify-content: center; gap: 5px; padding: 5px; border: 1px solid #233047; border-radius: 6px; background: #090f1ee8; pointer-events: auto; }
+.fx-shapes button { height: 30px; padding: 4px 9px; color: #9faec3; border-color: transparent; }
+.fx-shapes button[aria-pressed="true"] { color: #a6e9d7; border-color: #a6e9d7; background: #18372f; }
+@media (max-width: 700px) { .fx-shapes { gap: 2px; padding: 3px; } .fx-shapes button { font-size: 10px; padding: 4px 7px; } }

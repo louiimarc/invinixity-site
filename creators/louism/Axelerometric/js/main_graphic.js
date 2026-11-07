@@ -4,21 +4,17 @@ const stepMs = 1000 / 40;
 let nextFrame;
 let sceneCamera;
 let lastKickBeat = -1;
-const hatPlane = {randomize:false, height:0.5, leg:null, current:0.5, crossed:false, hitAt:-1};
+const hatPlane = {division:1, lastStep:null, hitAt:-1};
 
 function advancePlane(frame) {
-    const leg = Math.floor(frame.bassBeat);
-    if (leg !== hatPlane.leg) {
-        hatPlane.leg = leg;
-        hatPlane.current = hatPlane.randomize ? 0.15 + Math.random() * 0.7 : hatPlane.height;
-        hatPlane.crossed = false;
-    }
-    frame.planeHeight = hatPlane.current;
-    const crossing = leg + (leg % 2 === 0 ? hatPlane.current : 1 - hatPlane.current);
-    if (!hatPlane.crossed && frame.bassBeat >= crossing) {
-        hatPlane.crossed = true;
+    const division = hatPlane.division;
+    frame.hatDivision = division;
+    // Center each strike within its subdivision, away from the kick at the caps.
+    const step = Math.floor(frame.bassBeat * division - 0.5 + 1e-9);
+    if (step !== hatPlane.lastStep) {
+        hatPlane.lastStep = step;
+        const crossing = (step + 0.5) / division;
         const at = frame.at - (frame.bassBeat - crossing) * 60000 / clock.bpm;
-        // Skip old crossings if the tab resumes halfway through a trip.
         if (frame.at - at <= stepMs + 1) {
             hatPlane.hitAt = at;
             if (sounding) {
@@ -105,7 +101,7 @@ function pumpSimulation() {
             });
             const p = ['x','y','z'].map(axis => displayCoordinate(sphere.position, axis));
             const waveform = Object.hasOwn(wallWaveforms, voice) ? voice : undefined;
-            frame.boxes.push({cx, cy, opacity, p, bounds, waveform, hue:sphere.hue, flash:sphere.flash, glow:sphere.faceGlow.slice()});
+            frame.boxes.push({cx, cy, opacity, p, bounds, waveform, fx:entity[i].fx ?? null, fxShape:entity[i].fxShape || entity[i].fx?.shape || 'slice', hue:sphere.hue, flash:sphere.flash, glow:sphere.faceGlow.slice()});
             if (i >= count || face < 0 || !sounding || (soloIndex >= 0 && i !== soloIndex)) continue;
             const pitch = degree + face;
             const position = ['x','y','z'].map(axis => constrain(impact[axis] / (local[axis]/2 - sphere.radius), -1, 1));

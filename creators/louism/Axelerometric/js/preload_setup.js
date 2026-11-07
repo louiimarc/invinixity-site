@@ -24,13 +24,23 @@ function setup() {
     outputLevel = new p5.Amplitude(0.7);
     spectrumView = new SpectrumView(entity[0].sound.analyser);
     setupControls();
+    roomFX.setup();
     setupSoloInputs();
+    setupPercussionInputs();
     midi = new WebMIDIListener();
     setupPersistence();
     const tick = new Worker('js/tick-worker.js');
     tick.onmessage = pumpSimulation;
     control('show-qr').onclick = () => control('qr-dialog').showModal();
     lan.connect(data => {
+        if (data.type === 'hat-step') {
+            setHatDivision(hatPlane.division + data.delta);
+            queueSetupSave();
+        }
+        if (data.type === 'room-fx-shape') changeRoomFXShape(data.index, data.shape);
+        if (data.type === 'room-fx') chooseRoomFX(data.index, data.effect);
+        if (data.type === 'clear-fx') clearRoomFX(data.index);
+        if (data.type === 'unsolo') releaseSolo();
         if (data.type === 'solo') toggleSolo(data.index);
         if (data.type === 'info') {
             const link = control('lan-link');

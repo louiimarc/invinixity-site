@@ -20,7 +20,9 @@ function setup() {
     bassSound = new SoundEngine(audioContext, audioContext.destination);
     for (let i = 0; i < numberOfEntity; i++) entity.push({sound:new SoundEngine(audioContext, audioContext.destination)});
     spectrumView = new SpectrumView(entity[0].sound.analyser);
+    roomFX.setup();
     setupSoloInputs();
+    setupPercussionInputs();
     stage.addEventListener('pointerdown', event => {
         if (entered && event.pointerType === 'touch') localOrbit = true;
     });
@@ -63,6 +65,7 @@ async function loadLocalFiles(files) {
 function resetView(message) {
     playback.frames.length = 0;
     applySolo(-1);
+    roomFX.syncPanel(-1, null);
     localOrbit = false;
     spectrumView.draw([], 0, []);
     bassChamber.clear();

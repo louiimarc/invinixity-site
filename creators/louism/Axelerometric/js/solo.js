@@ -4,6 +4,7 @@ let soloIndex = -1;
 function applySolo(index) {
     if (index === soloIndex) return;
     soloIndex = index;
+    if (typeof roomFX !== 'undefined') roomFX.syncPanel(index, index >= 0 ? entity[index]?.fx : null);
     if (index < 0) return;
     entity.forEach((box, i) => {
         if (i !== index) {
@@ -16,6 +17,11 @@ function applySolo(index) {
 function toggleSolo(index) {
     if (!Number.isInteger(index) || index < 0 || index >= numberOfShownEntity) return;
     applySolo(soloIndex === index ? -1 : index);
+    queueSetupSave();
+}
+
+function releaseSolo() {
+    applySolo(-1);
     queueSetupSave();
 }
 
@@ -54,6 +60,11 @@ function setupSoloInputs() {
         else toggleSolo(i);
     };
     window.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+            if (isPresentation) lan.send({type:'unsolo'});
+            else releaseSolo();
+            return;
+        }
         if (!/^[1-6]$/.test(e.key) || e.repeat || e.ctrlKey || e.altKey || e.metaKey ||
             e.target.closest?.('input,select,textarea,[contenteditable="true"]')) return;
         request(Number(e.key) - 1);
@@ -63,7 +74,7 @@ function setupSoloInputs() {
         let tap;
         el.addEventListener('pointerdown', e => {
             tap = null;
-            if (!e.isPrimary || e.button !== 0) return;
+            if (!e.isPrimary || e.button !== 0 || e.target.closest?.('.room-fx')) return;
             const bounds = el.getBoundingClientRect();
             const x = e.clientX - bounds.left, y = e.clientY - bounds.top;
             const index = id === 'stage' ? pickRoom(x,y) : spectrumView.pick(x,y);

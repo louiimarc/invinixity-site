@@ -2,10 +2,46 @@
 // into a shallow ellipse so the side faces stay visible through a full turn.
 const bassChamber = {
     canvas: document.getElementById('bass-chamber'),
+    division: null,
+    planes: [],
+    transitionStart: 0,
+    // Retarget from the currently visible planes so fast repeated changes stay smooth.
+    animatePlanes(division, now) {
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const duration = reducedMotion ? 0 : 280;
+        const progress = duration ? Math.min(1, Math.max(0, (now - this.transitionStart) / duration)) : 1;
+        const eased = progress * progress * (3 - 2 * progress);
+        const visible = this.planes.map(plane => ({
+            position: plane.from + (plane.to - plane.from) * eased,
+            opacity: plane.alphaFrom + (plane.alphaTo - plane.alphaFrom) * eased
+        })).filter(plane => plane.opacity > 0.001);
+        if (division === this.division) return visible;
+        const initial = this.division === null;
+        this.division = division;
+        this.transitionStart = now;
+        this.planes = visible.map(plane => ({
+            from: plane.position, to: plane.position * 0.75,
+            alphaFrom: plane.opacity, alphaTo: 0
+        }));
+        for (let i = 0; i < division; i++) {
+            const position = 1 - 2 * (i + 0.5) / division;
+            this.planes.push({from: initial ? position : position * 0.75, to: position,
+                alphaFrom: initial ? 1 : 0, alphaTo: 1});
+        }
+        // Reduced motion switches immediately; the initial scene needs no entrance.
+        if (reducedMotion || initial) {
+            this.planes = this.planes.filter(plane => plane.alphaTo === 1)
+                .map(plane => ({...plane, from:plane.to, alphaFrom:1}));
+            return this.planes.map(plane => ({position:plane.to, opacity:1}));
+        }
+        return visible;
+    },
     clear() {
+        this.division = null;
+        this.planes = [];
         this.canvas.getContext('2d').clearRect(0, 0, this.canvas.width, this.canvas.height);
     },
-    draw(beat, planeHeight, flash) {
+    draw(beat, division, flash, now = performance.now()) {
         const canvas = this.canvas;
         const w = canvas.clientWidth, h = canvas.clientHeight;
         if (!w || !h) return;
@@ -56,18 +92,18 @@ const bassChamber = {
             ctx.lineTo(x, y + length / 2);
         }
         ctx.stroke();
-        if (Number.isFinite(planeHeight)) {
-            const marker = (1 - 2 * planeHeight) * (length / 2 - ball);
+        for (const plane of this.animatePlanes(division, now)) {
+            const marker = plane.position * (length / 2 - ball);
             ctx.beginPath();
             cap.forEach(([x,y], i) => {
                 if (i === 0) ctx.moveTo(x, marker + y);
                 else ctx.lineTo(x, marker + y);
             });
             ctx.closePath();
-            ctx.strokeStyle = 'rgba(255,255,255,' + (0.38 + flash * 0.62) + ')';
+            ctx.strokeStyle = 'rgba(255,255,255,' + ((0.38 + flash * 0.62) * plane.opacity) + ')';
             ctx.stroke();
             if (flash > 0) {
-                ctx.fillStyle = 'rgba(255,255,255,' + flash * 0.75 + ')';
+                ctx.fillStyle = 'rgba(255,255,255,' + flash * 0.75 * plane.opacity + ')';
                 ctx.fill();
             }
         }
@@ -79,3 +115,42 @@ const bassChamber = {
         ctx.restore();
     }
 };
+
+// The controller owns subdivision changes, including gestures from viewers.
+function setupPercussionInputs() {
+    const change = delta => {
+        if (isPresentation) lan.send({type:'hat-step', delta});
+        else {
+            setHatDivision(hatPlane.division + delta);
+            queueSetupSave();
+        }
+    };
+    window.addEventListener('keydown', event => {
+        if (!['[', ']'].includes(event.key) || event.ctrlKey || event.metaKey || event.altKey ||
+            event.target.closest?.('input,select,textarea,[contenteditable="true"]')) return;
+        event.preventDefault();
+        change(event.key === ']' ? 1 : -1);
+    });
+    const canvas = bassChamber.canvas;
+    canvas.setAttribute('aria-label', 'Percussion chamber. Flick up to add subdivisions or down to subtract in landscape; right or left in portrait.');
+    let flick;
+    const clear = () => { flick = null; };
+    canvas.addEventListener('pointerdown', event => {
+        if (!event.isPrimary) { clear(); return; }
+        if (event.pointerType !== 'touch') return;
+        flick = {id:event.pointerId, x:event.clientX, y:event.clientY, at:performance.now(),
+            portrait:matchMedia('(orientation: portrait)').matches};
+        canvas.setPointerCapture(event.pointerId);
+    });
+    canvas.addEventListener('pointercancel', clear);
+    canvas.addEventListener('lostpointercapture', clear);
+    canvas.addEventListener('pointerup', event => {
+        const start = flick;
+        clear();
+        if (!start || start.id !== event.pointerId || performance.now() - start.at > 700) return;
+        const dx = event.clientX - start.x, dy = event.clientY - start.y;
+        const travel = start.portrait ? dx : -dy;
+        const cross = start.portrait ? dy : dx;
+        if (Math.abs(travel) >= 24 && Math.abs(travel) > Math.abs(cross) * 1.3) change(Math.sign(travel));
+    });
+}

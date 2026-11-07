@@ -1,3 +1,10 @@
+function setHatDivision(value) {
+    if (!Number.isInteger(value)) return;
+    hatPlane.division = Math.max(1, Math.min(6, value));
+    hatPlane.lastStep = null;
+    control('hat-division').value = hatPlane.division;
+}
+
 const clock = new BeatClock(108);
 const scales = {
     Pentatonic: pentatonicScale, Major: majorScale, Minor: minorScale,
@@ -38,7 +45,7 @@ async function toggleSound() {
             await userStartAudio();
             sounding = getAudioContext().state === 'running';
             lastKickBeat = -1;
-            hatPlane.leg = null;
+            hatPlane.lastStep = null;
             hatPlane.hitAt = -1;
             clock.origin = (nextFrame || playback.now() + lookahead) / 1000;
             clock.beat = 0;
@@ -100,15 +107,7 @@ function setupControls() {
         event.target.value = clock.bpm;
     };
     control('room-motion').onchange = event => setRoomMotion(event.target.value);
-    control('plane-mode').onchange = event => {
-        hatPlane.randomize = event.target.value === 'random';
-        control('plane-height').disabled = hatPlane.randomize;
-    };
-    control('plane-height').onchange = event => {
-        const percent = event.target.valueAsNumber;
-        if (Number.isFinite(percent)) hatPlane.height = Math.max(15, Math.min(85, Math.round(percent))) / 100;
-        event.target.value = Math.round(hatPlane.height * 100);
-    };
+    control('hat-division').onchange = event => setHatDivision(Number(event.target.value));
     control('grid').onchange = event => { hitGrid = Number(event.target.value); };
     control('scale').onchange = event => { activeScale = scales[event.target.value]; };
     control('boxes').onchange = event => {
