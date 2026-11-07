@@ -1,6 +1,6 @@
 const roomEffectNames = {
     lowpass:'Low-pass', highpass:'High-pass', bandpass:'Band-pass',
-    drive:'Drive', echo:'Echo', tremolo:'Tremolo'
+    bitcrush:'Bitcrush', echo:'Echo', stutter:'Stutter'
 };
 
 const roomFXShapes = {slice:'Slice', sphere:'Sphere', triangle:'Irregular triangle'};

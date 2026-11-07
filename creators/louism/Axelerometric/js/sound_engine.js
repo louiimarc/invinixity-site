@@ -58,7 +58,7 @@ class MasterFXBus {
         const shapes=['slice','sphere','triangle'];
         for(const chain of this.chains) chain.inserts.forEach((insert,i)=>{
             const fx=frame.effects[shapes[i]];
-            insert.update(fx,roomFXDepth(fx,frame.p,frame.bounds),when);
+            insert.update(fx,roomFXDepth(fx,frame.p,frame.bounds),when,{bpm:frame.bpm||108,beat:frame.beat||0});
         });
     }
     flush() {
@@ -198,59 +198,82 @@ class SpatialOutput {
     }
 }
 
-// A live insert per sounding voice preserves its own spatial position while
-// the room's barrier moves the FX on every voice, including sample tails.
+// Native filters/delay plus sample-accurate texture processing in each master slot.
 class RoomFXInsert {
-    static curve = Float32Array.from({length:2048}, (_, i) => {
-        const x = i * 2 / 2047 - 1;
-        return Math.tanh(x * 5) / Math.tanh(5);
-    });
-    constructor(context, input) {
-        this.context = context;
-        this.filter = context.createBiquadFilter(); this.filter.type = 'allpass';
-        this.drive = context.createWaveShaper(); this.drive.curve = RoomFXInsert.curve;
-        this.dry = context.createGain(); this.wet = context.createGain(); this.wet.gain.value = 0;
-        this.sum = context.createGain();
-        this.delay = context.createDelay(1); this.delay.delayTime.value = 0.18;
-        this.feedback = context.createGain(); this.feedback.gain.value = 0.28;
-        this.echo = context.createGain(); this.echo.gain.value = 0;
-        this.output = context.createGain();
-        this.lfo = context.createOscillator(); this.lfo.frequency.value = 5;
-        this.modulation = context.createGain(); this.modulation.gain.value = 0;
-        input.connect(this.filter);
-        this.filter.connect(this.dry); this.dry.connect(this.sum);
-        this.filter.connect(this.drive); this.drive.connect(this.wet); this.wet.connect(this.sum);
-        this.sum.connect(this.output);
-        this.sum.connect(this.delay); this.delay.connect(this.feedback); this.feedback.connect(this.delay);
-        this.delay.connect(this.echo); this.echo.connect(this.output);
-        this.lfo.connect(this.modulation); this.modulation.connect(this.output.gain); this.lfo.start();
-        this.nodes = [this.filter,this.drive,this.dry,this.wet,this.sum,this.delay,this.feedback,this.echo,this.output,this.modulation,this.lfo];
+    static modules=new WeakMap();
+    static crushCurve=Float32Array.from({length:65537},(_,i)=>Math.round((i/32768-1)*8)/8);
+    static prepare(context) {
+        if(!this.modules.has(context)) {
+            const loading=context.audioWorklet
+                ? context.audioWorklet.addModule(new URL('js/texture-worklet.js?v=1',location.href)).then(()=>true).catch(()=>false)
+                : Promise.resolve(false);
+            this.modules.set(context,loading);
+        }
+        return this.modules.get(context);
     }
-    update(fx, depth, time = this.context.currentTime) {
-        const type = fx?.type;
-        const amount = Math.max(0, Math.min(1, depth));
-        const smooth = (param, value) => {
-            param.cancelScheduledValues(time);
-            param.setTargetAtTime(value,time,0.025);
+    constructor(context,input) {
+        this.context=context;
+        this.filter=context.createBiquadFilter();this.filter.type='allpass';
+        this.textureInput=context.createGain();this.textureOutput=context.createGain();
+        // Keep sound available while the worklet loads, or on older/insecure browsers.
+        this.crusher=context.createWaveShaper();this.crusher.curve=RoomFXInsert.crushCurve;
+        this.dry=context.createGain();this.wet=context.createGain();this.wet.gain.value=0;
+        this.textureInput.connect(this.dry);this.dry.connect(this.textureOutput);
+        this.textureInput.connect(this.crusher);this.crusher.connect(this.wet);this.wet.connect(this.textureOutput);
+        this.delay=context.createDelay(1);this.delay.delayTime.value=0.18;
+        this.feedback=context.createGain();this.feedback.gain.value=0.28;
+        this.echo=context.createGain();this.echo.gain.value=0;
+        this.output=context.createGain();
+        input.connect(this.filter);this.filter.connect(this.textureInput);
+        this.textureOutput.connect(this.output);this.textureOutput.connect(this.delay);
+        this.delay.connect(this.feedback);this.feedback.connect(this.delay);
+        this.delay.connect(this.echo);this.echo.connect(this.output);
+        this.nodes=[this.filter,this.textureInput,this.textureOutput,this.crusher,this.dry,this.wet,this.delay,this.feedback,this.echo,this.output];
+        RoomFXInsert.prepare(context).then(ready=>{
+            if(!ready||this.disposed||context.state==='closed')return;
+            this.texture=new AudioWorkletNode(context,'axelerometric-texture',{
+                numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1],channelCount:1,channelCountMode:'explicit'
+            });
+            this.textureInput.disconnect();this.dry.disconnect();this.crusher.disconnect();this.wet.disconnect();
+            this.textureInput.connect(this.texture);this.texture.connect(this.textureOutput);
+            this.nodes.push(this.texture);
+            this.textureOutput.gain.cancelScheduledValues(context.currentTime);
+            this.textureOutput.gain.value=1;
+            if(this.latest)this.update(...this.latest);
+        });
+    }
+    update(fx,depth,time=this.context.currentTime,transport={bpm:108,beat:0}) {
+        time=Math.max(time,this.context.currentTime);
+        this.latest=[fx,depth,time,transport];
+        const type=fx?.type,amount=Math.max(0,Math.min(1,depth));
+        const smooth=(param,value)=>{
+            param.cancelScheduledValues(time);param.setTargetAtTime(value,time,0.025);
         };
-        const filterType = ['lowpass','highpass','bandpass'].includes(type) ? type : 'allpass';
-        if (this.filter.type !== filterType) this.filter.type = filterType;
-        const ceiling = Math.min(20000,this.context.sampleRate * 0.45);
-        const frequency = type === 'lowpass' ? ceiling * (350 / ceiling) ** amount
-            : type === 'highpass' ? 20 * (2200 / 20) ** amount : 1100;
-        smooth(this.filter.frequency, frequency);
-        smooth(this.filter.Q, type === 'bandpass' ? 0.001 * 2500 ** amount : 0.707);
-        smooth(this.wet.gain, type === 'drive' ? amount : 0);
-        smooth(this.dry.gain, type === 'drive' ? 1 - amount : 1);
-        smooth(this.echo.gain, type === 'echo' ? amount * 0.5 : 0);
-        smooth(this.output.gain, type === 'tremolo' ? 1 - amount * 0.4 : 1);
-        smooth(this.modulation.gain, type === 'tremolo' ? amount * 0.4 : 0);
+        const filterType=['lowpass','highpass','bandpass'].includes(type)?type:'allpass';
+        if(this.filter.type!==filterType)this.filter.type=filterType;
+        const ceiling=Math.min(20000,this.context.sampleRate*0.45);
+        smooth(this.filter.frequency,type==='lowpass'?ceiling*(350/ceiling)**amount:type==='highpass'?20*110**amount:1100);
+        smooth(this.filter.Q,type==='bandpass'?0.001*2500**amount:0.707);
+        smooth(this.echo.gain,type==='echo'?amount*0.5:0);
+        if(this.texture) {
+            smooth(this.texture.parameters.get('crushDepth'),type==='bitcrush'?amount:0);
+            smooth(this.texture.parameters.get('gateDepth'),type==='stutter'?amount:0);
+            for(const [name,value] of Object.entries({bpm:transport.bpm,beat:transport.beat,anchor:time})) {
+                const param=this.texture.parameters.get(name);param.cancelScheduledValues(time);param.setValueAtTime(value,time);
+            }
+        } else {
+            smooth(this.wet.gain,type==='bitcrush'?amount:0);
+            smooth(this.dry.gain,type==='bitcrush'?1-amount:1);
+            // Audio-rate worklet gating is preferred. This native fallback still
+            // follows the beat and uses short ramps, without requiring analysis.
+            const phase=((transport.beat*4)%1+1)%1;
+            smooth(this.textureOutput.gain,type==='stutter'&&phase>=0.5?1-amount:1);
+        }
     }
     dispose() {
-        if (this.disposed) return;
-        this.disposed = true;
-        this.lfo.stop();
-        this.nodes.forEach(node => node.disconnect());
+        if(this.disposed)return;this.disposed=true;
+        if(this.texture){this.texture.port.postMessage('dispose');this.texture.port.close();}
+        this.nodes.forEach(node=>node.disconnect());
     }
 }
 
