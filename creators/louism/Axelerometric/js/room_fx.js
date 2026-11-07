@@ -4,6 +4,26 @@ const roomEffectNames = {
 };
 
 const roomFXShapes = {slice:'Slice', sphere:'Sphere', tetrahedron:'Tetrahedron'};
+const roomFXColors={
+    slice:{hue:200,rgb:[90,185,235]},
+    sphere:{hue:160,rgb:[85,220,175]},
+    tetrahedron:{hue:38,rgb:[240,185,85]}
+};
+
+function fxBallColor(effects,point,bounds) {
+    const white=[230,233,238],mixed=[0,0,0];
+    let total=0;
+    for(const [shape,fx] of Object.entries(effects)) {
+        const depth=roomFXDepth(fx,point,bounds),palette=roomFXColors[shape];
+        if(!palette||depth<=0)continue;
+        total+=depth;
+        palette.rgb.forEach((value,i)=>mixed[i]+=value*depth);
+    }
+    if(!total)return white;
+    const strength=Math.min(1,Math.sqrt(total)*3);
+    return mixed.map((value,i)=>white[i]+(value/total-white[i])*strength);
+}
+
 const finiteVector = (v, length) => Array.isArray(v) && v.length === length && v.every(Number.isFinite);
 
 function validRoomFX(fx) {
@@ -202,7 +222,7 @@ const roomFX = {
         panel.setAttribute('aria-label','Chamber controls');
         panel.innerHTML='<div class="fx-heading"><span id="fx-room"></span></div>'+
             '<div class="fx-bank fx-bank-left"></div><div class="fx-bank fx-bank-right"></div>'+
-            '<div class="fx-footer"><div class="fx-shapes" role="group" aria-label="Master FX slots"></div><p id="fx-hint" role="status"></p>'+
+            '<div class="fx-footer"><div class="fx-shapes" role="group" aria-label="FX slots"></div><p id="fx-hint" role="status"></p>'+
             '<button type="button" data-action="clear">Clear shape FX</button><button type="button" data-action="slice">Randomize percussion slice</button></div>';
         Object.entries(roomEffectNames).forEach(([type,label],i)=>{
             const button=document.createElement('button');button.type='button';button.dataset.effect=type;button.textContent=label;
@@ -236,7 +256,7 @@ const roomFX = {
         if(signature===this.signature)return;this.signature=signature;
         this.panel.hidden=soloIndex<0&&!focused;
         if(this.panel.hidden)return;
-        this.panel.querySelector('#fx-room').textContent=focused?'Master FX · '+Object.values(effects).filter(Boolean).length+'/3':'Room '+String(soloIndex+1).padStart(2,'0');
+        this.panel.querySelector('#fx-room').textContent=focused?'FX · '+Object.values(effects).filter(Boolean).length+'/3':'Room '+String(soloIndex+1).padStart(2,'0');
         this.panel.querySelectorAll('.fx-bank,.fx-shapes').forEach(el=>el.hidden=!focused);
         this.panel.querySelector('[data-action="slice"]').hidden=focused;
         const selected=effects[shape];

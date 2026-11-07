@@ -205,7 +205,7 @@ class RoomFXInsert {
     static prepare(context) {
         if(!this.modules.has(context)) {
             const loading=context.audioWorklet
-                ? context.audioWorklet.addModule(new URL('js/texture-worklet.js?v=1',location.href)).then(()=>true).catch(()=>false)
+                ? context.audioWorklet.addModule(new URL('js/texture-worklet.js?v=depth-stutter-1',location.href)).then(()=>true).catch(()=>false)
                 : Promise.resolve(false);
             this.modules.set(context,loading);
         }
@@ -266,7 +266,8 @@ class RoomFXInsert {
             smooth(this.dry.gain,type==='bitcrush'?1-amount:1);
             // Audio-rate worklet gating is preferred. This native fallback still
             // follows the beat and uses short ramps, without requiring analysis.
-            const phase=((transport.beat*4)%1+1)%1;
+            const division=2**Math.min(4,Math.floor(amount*5));
+            const phase=((transport.beat*division)%1+1)%1;
             smooth(this.textureOutput.gain,type==='stutter'&&phase>=0.5?1-amount:1);
         }
     }

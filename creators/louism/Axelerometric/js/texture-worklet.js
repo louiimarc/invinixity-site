@@ -18,7 +18,9 @@ class TextureProcessor extends AudioWorkletProcessor {
         const input=inputs[0],output=outputs[0];
         const crush=parameters.crushDepth[0],depth=parameters.gateDepth[0];
         const levels=2**(15-12*crush),hold=1+Math.floor(crush*crush*31);
-        const rate=parameters.bpm[0]/60*4; // Four gates per quarter note: 1/16 notes.
+        // Halve the note length at each deeper band: 1/4 through 1/64.
+        const division=2**Math.min(4,Math.floor(depth*5));
+        const rate=parameters.bpm[0]/60*division;
         const edge=Math.min(0.1,rate*0.002); // Two-millisecond fades prevent hard gain steps.
         const smooth=x=>{x=Math.max(0,Math.min(1,x));return x*x*(3-2*x);};
         for(let channel=0;channel<output.length;channel++) {
@@ -33,7 +35,7 @@ class TextureProcessor extends AudioWorkletProcessor {
                 let gain=1;
                 if(depth>0) {
                     const beat=parameters.beat[0]+((currentFrame+i)/sampleRate-parameters.anchor[0])*parameters.bpm[0]/60;
-                    const phase=((beat*4)%1+1)%1;
+                    const phase=((beat*division)%1+1)%1;
                     const gate=smooth(phase/edge)*smooth((0.5-phase)/edge);
                     gain=1-depth+depth*gate;
                 }

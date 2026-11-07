@@ -60,13 +60,13 @@ const playback = {
             this.targets.push({i:-2,center:[0,0,0],size:[bounds.x,bounds.y,bounds.z]});
             for(const [shape,fx] of Object.entries(master.effects)) {
                 roomFX.drawBarrier('master-'+shape,fx,bounds,point,
-                    {slice:200,sphere:160,tetrahedron:38}[shape],opacity,time);
+                    roomFXColors[shape].hue,opacity,time);
             }
             noFill();stroke(175,182,190,opacity*255);strokeWeight(masterFocused?2:1.2);
             box(bounds.x,bounds.y,bounds.z);drawFrontMarker(bounds.x,bounds.y,bounds.z);
             push();translate(0,-bounds.y/2-18,0);noStroke();fill(200,206,215,opacity*255);
-            textSize(12);text('MASTER FX',0,0);pop();
-            translate(...point);noStroke();fill(230,233,238,opacity*255);sphere(8,16,12);
+            textSize(12);text('FX',0,0);pop();
+            translate(...point);noStroke();fill(...fxBallColor(master.effects,point,bounds),opacity*255);sphere(8,16,12);
             pop();
         }
         if (merge > 0.75) {
