@@ -59,16 +59,39 @@ const tabletGestures={
             this.dial={start:now,angle:pair.angle,rotation:0,base:this.bpm(),value:this.bpm(),active:false,lastSent:-Infinity};
             this.drawDial(pair);
         } else if(this.pointers.size>2)this.finishDial();
+        if(this.pointers.size===4)this.chord.pinch={radius:this.fourRadius(),mode:null};
+        else if(this.pointers.size>4)this.chord.pinch=null;
     },
     pair() {
         const [a,b]=Array.from(this.pointers.values());
         return {x:(a.x+b.x)/2,y:(a.y+b.y)/2,distance:Math.hypot(b.x-a.x,b.y-a.y),angle:Math.atan2(b.y-a.y,b.x-a.x)};
+    },
+    fourRadius() {
+        const points=Array.from(this.pointers.values());
+        const x=points.reduce((sum,p)=>sum+p.x,0)/points.length,y=points.reduce((sum,p)=>sum+p.y,0)/points.length;
+        return Math.sqrt(points.reduce((sum,p)=>sum+(p.x-x)**2+(p.y-y)**2,0)/points.length);
+    },
+    updateRoomPinch() {
+        const pinch=this.chord?.pinch;
+        if(this.pointers.size!==4||this.chord.max!==4||!pinch)return;
+        const radius=this.fourRadius(),delta=radius-pinch.radius;
+        if(Math.abs(delta)<14||Math.abs(delta)/Math.max(25,pinch.radius)<0.18)return;
+        const mode=delta<0?'room':'circle';
+        if(mode!==pinch.mode) {
+            pinch.mode=mode;this.chord.moved=true;this.lastTap=null;
+            if(isPresentation)lan.send({type:'room-motion',mode});
+            else {setRoomMotion(mode);queueSetupSave();}
+        }
+        pinch.radius=radius;
     },
     move(event) {
         if(!this.pointers.has(event.pointerId))return;
         const start=this.chord.starts.get(event.pointerId);
         if(Math.hypot(event.clientX-start.x,event.clientY-start.y)>12)this.chord.moved=true;
         this.pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+        if(this.pointers.size===4&&this.pinchFrame==null) {
+            this.pinchFrame=requestAnimationFrame(()=>{this.pinchFrame=null;this.updateRoomPinch();});
+        }
         if(this.pointers.size!==2||!this.dial)return;
         const pair=this.pair(),dial=this.dial;
         const delta=Math.atan2(Math.sin(pair.angle-dial.angle),Math.cos(pair.angle-dial.angle));
@@ -106,6 +129,7 @@ const tabletGestures={
     },
     up(event) {
         if(!this.pointers.has(event.pointerId))return;
+        if(this.pointers.size===4)this.updateRoomPinch();
         this.pointers.delete(event.pointerId);
         if(this.pointers.size<2)this.finishDial();
         if(this.pointers.size)return;
@@ -126,6 +150,7 @@ const tabletGestures={
         if(this.pointers.has(event.pointerId))this.reset();
     },
     reset() {
+        if(this.pinchFrame!=null){cancelAnimationFrame(this.pinchFrame);this.pinchFrame=null;}
         this.lastTap=null;this.pointers.clear();this.chord=null;
         this.finishDial();
     }

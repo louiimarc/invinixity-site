@@ -44,6 +44,7 @@ function setup() {
             setHatDivision(hatPlane.division + data.delta);
             queueSetupSave();
         }
+        if(data.type==='room-motion'&&['room','circle'].includes(data.mode)){setRoomMotion(data.mode);queueSetupSave();}
         if(data.type==='room-step'&&[1,-1].includes(data.delta)){setBoxCount(numberOfShownEntity+data.delta);queueSetupSave();}
         if(data.type==='tempo')setInstrumentTempo(data.bpm);
         if(data.type==='motion')motionControl.receive(data.tilt);

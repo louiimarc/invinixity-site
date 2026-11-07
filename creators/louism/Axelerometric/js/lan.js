@@ -17,7 +17,7 @@ const lan = {
                     onPacket(packet);
                 } else if(packet.type==='join') {
                     this.channel.postMessage(this.latest?{...this.latest,relayOffset:this.offset}:{type:'waiting'});
-                } else if(['solo','unsolo','master-focus','master-reroll','percussion-slice','hat-step','motion','shake','tempo','room-step'].includes(packet.type)) {
+                } else if(['solo','unsolo','master-focus','master-reroll','percussion-slice','hat-step','motion','shake','tempo','room-step','room-motion'].includes(packet.type)) {
                     onPacket(packet);
                 }
             };

@@ -84,6 +84,8 @@ server.on('upgrade', (req, socket, head) => {
                     viewers.add(ws);
                     ws.send(JSON.stringify(latest ? {type:'frame',frame:latest,notes:pending.filter(n=>n.at>Date.now())} : {type:'waiting'}));
                 }
+            } else if(presenter && msg?.type==='room-motion' && ['room','circle'].includes(msg.mode) && host?.readyState===WebSocket.OPEN) {
+                host.send(JSON.stringify({type:'room-motion',mode:msg.mode}));
             } else if(presenter && msg?.type==='room-step' && [1,-1].includes(msg.delta) && host?.readyState===WebSocket.OPEN) {
                 host.send(JSON.stringify({type:'room-step',delta:msg.delta}));
             } else if(presenter && msg?.type==='tempo' && Number.isInteger(msg.bpm) && msg.bpm>=30 && msg.bpm<=300 && host?.readyState===WebSocket.OPEN) {
