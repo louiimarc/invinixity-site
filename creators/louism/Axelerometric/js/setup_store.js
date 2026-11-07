@@ -10,7 +10,7 @@ function saveSetup() {
         count: numberOfShownEntity, solo: soloIndex, selected: selectedChamber,
         room: control('room-motion').value, expanded: document.querySelector('.console').open,
         hatDivision: hatPlane.division,
-        master:{effects:masterChamber.effects,selectedShape:masterChamber.selectedShape,focused:masterFocused,
+        master:{effects:masterChamber.effects,focused:masterFocused,
             position:masterChamber.sphere.position.array(),direction:masterChamber.sphere.direction.array()},
         camera: sceneCamera, cc: midi.ccValues,
         chambers: entity.map(({voice, degree, sphere, slice}) => ({
@@ -61,7 +61,7 @@ function restoreSetup() {
     for (const [i, box] of entity.entries()) {
         const saved = state.chambers[i];
         if (!saved) continue;
-        const savedSlice=saved.slice?{...saved.slice,type:'bandpass'}:null;
+        const savedSlice=saved.slice?{...saved.slice,type:'echo'}:null;
         box.slice=validRoomFX(savedSlice)?savedSlice:box.slice;
         if (typeof saved.voice === 'string' && /^file:\d+:/.test(saved.voice)) {
             sampleOption(saved.voice, saved.voice.replace(/^file:\d+:/, ''));
@@ -73,15 +73,11 @@ function restoreSetup() {
         if (validVector(saved.direction) && Math.hypot(...saved.direction) > 0) box.sphere.direction.set(...saved.direction).normalize();
     }
     if(state.master) {
-        const used=new Set();
-        for(const shape of Object.keys(roomFXShapes)) {
+        for(const [shape,type] of Object.entries(fixedFX)) {
             const stored=state.master.effects?.[shape] || (shape==='tetrahedron'?state.master.effects?.triangle:null);
-            const fx=stored?{...stored,shape:stored.shape==='triangle'?'tetrahedron':stored.shape,type:({drive:'bitcrush',tremolo:'stutter'})[stored.type]||stored.type}:null;
-            masterChamber.effects[shape]=validRoomFX(fx) && fx.shape===shape && !used.has(fx.type)?fx:null;
-            if(masterChamber.effects[shape])used.add(fx.type);
+            const fx=stored?{...stored,type,shape}:null;
+            masterChamber.effects[shape]=validRoomFX(fx)?fx:masterChamber.effects[shape];
         }
-        const selectedShape=state.master.selectedShape==='triangle'?'tetrahedron':state.master.selectedShape;
-        if(Object.hasOwn(roomFXShapes,selectedShape))masterChamber.selectedShape=selectedShape;
         if(validVector(state.master.position))masterChamber.sphere.position.set(...state.master.position);
         if(validVector(state.master.direction)&&Math.hypot(...state.master.direction)>0)masterChamber.sphere.direction.set(...state.master.direction).normalize();
         masterFocused=state.master.focused===true;

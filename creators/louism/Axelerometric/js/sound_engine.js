@@ -223,7 +223,6 @@ class RoomFXInsert {
     }
     constructor(context,input) {
         this.context=context;
-        this.filter=context.createBiquadFilter();this.filter.type='allpass';
         this.textureInput=context.createGain();this.textureOutput=context.createGain();
         // Keep sound available while the worklet loads, or on older/insecure browsers.
         this.crusher=context.createWaveShaper();this.crusher.curve=RoomFXInsert.crushCurve;
@@ -234,11 +233,11 @@ class RoomFXInsert {
         this.feedback=context.createGain();this.feedback.gain.value=0.28;
         this.echo=context.createGain();this.echo.gain.value=0;
         this.output=context.createGain();
-        input.connect(this.filter);this.filter.connect(this.textureInput);
+        input.connect(this.textureInput);
         this.textureOutput.connect(this.output);this.textureOutput.connect(this.delay);
         this.delay.connect(this.feedback);this.feedback.connect(this.delay);
         this.delay.connect(this.echo);this.echo.connect(this.output);
-        this.nodes=[this.filter,this.textureInput,this.textureOutput,this.crusher,this.dry,this.wet,this.delay,this.feedback,this.echo,this.output];
+        this.nodes=[this.textureInput,this.textureOutput,this.crusher,this.dry,this.wet,this.delay,this.feedback,this.echo,this.output];
         RoomFXInsert.prepare(context).then(ready=>{
             if(!ready||this.disposed||context.state==='closed')return;
             this.texture=new AudioWorkletNode(context,'axelerometric-texture',{
@@ -259,11 +258,6 @@ class RoomFXInsert {
         const smooth=(param,value)=>{
             param.cancelScheduledValues(time);param.setTargetAtTime(value,time,0.025);
         };
-        const filterType=['lowpass','highpass','bandpass'].includes(type)?type:'allpass';
-        if(this.filter.type!==filterType)this.filter.type=filterType;
-        const ceiling=Math.min(20000,this.context.sampleRate*0.45);
-        smooth(this.filter.frequency,type==='lowpass'?ceiling*(350/ceiling)**amount:type==='highpass'?20*110**amount:1100);
-        smooth(this.filter.Q,type==='bandpass'?0.001*2500**amount:0.707);
         smooth(this.echo.gain,type==='echo'?amount*0.5:0);
         if(this.texture) {
             smooth(this.texture.parameters.get('crushDepth'),type==='bitcrush'?amount:0);

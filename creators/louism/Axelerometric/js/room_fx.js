@@ -1,9 +1,9 @@
 const roomEffectNames = {
-    bandpass:'Band-pass',
     bitcrush:'Bitcrush', echo:'Echo', stutter:'Stutter'
 };
 
-const roomFXShapes = {slice:'Slice', sphere:'Sphere', tetrahedron:'Tetrahedron'};
+const fixedFX={slice:'echo',sphere:'stutter',tetrahedron:'bitcrush'};
+const roomFXShapes = {slice:'Plane', sphere:'Sphere', tetrahedron:'Tetrahedron'};
 const roomFXColors={
     slice:{hue:200,rgb:[90,185,235]},
     sphere:{hue:160,rgb:[85,220,175]},
@@ -53,7 +53,7 @@ function tetrahedronPoints(fx,bounds) {
 let masterFocused = false;
 const masterChamber = {
     bounds:{x:190,y:190,z:190}, sphere:null,
-    effects:{slice:null,sphere:null,tetrahedron:null}, selectedShape:'slice'
+    effects:Object.fromEntries(Object.entries(fixedFX).map(([shape,type])=>[shape,randomVolume(type,shape)]))
 };
 
 function randomVolume(type, shape, previous) {
@@ -76,30 +76,15 @@ function randomVolume(type, shape, previous) {
     return fx;
 }
 
-function chooseMasterFX(type) {
-    if(!masterFocused || !Object.hasOwn(roomEffectNames,type)) return;
-    const shape=masterChamber.selectedShape, previous=masterChamber.effects[shape];
-    if(previous && previous.type!==type) return;
-    if(Object.entries(masterChamber.effects).some(([s,fx])=>s!==shape && fx?.type===type)) return;
-    masterChamber.effects={...masterChamber.effects,[shape]:randomVolume(type,shape,previous)};
-    roomFX.syncPanel(); queueSetupSave();
-}
-
-function changeMasterShape(shape) {
-    if(!masterFocused || !Object.hasOwn(roomFXShapes,shape)) return;
-    masterChamber.selectedShape=shape;
-    roomFX.syncPanel(); queueSetupSave();
-}
-
-function clearMasterFX() {
-    if(!masterFocused) return;
-    masterChamber.effects={...masterChamber.effects,[masterChamber.selectedShape]:null};
-    spatialOutput.master.flush();
-    roomFX.syncPanel(); queueSetupSave();
+function rerollMasterFX(shape) {
+    if(!masterFocused||!Object.hasOwn(fixedFX,shape))return;
+    masterChamber.effects={...masterChamber.effects,
+        [shape]:randomVolume(fixedFX[shape],shape,masterChamber.effects[shape])};
+    roomFX.syncPanel();queueSetupSave();
 }
 
 function randomPercussionSlice() {
-    const slice=randomVolume('bandpass','slice');
+    const slice=randomVolume('echo','slice');
     slice.thickness=0.12; slice.offset=(Math.random()*2-1)*0.4;
     return slice;
 }
@@ -221,59 +206,60 @@ const roomFX = {
         const panel=document.createElement('section');panel.className='room-fx';panel.hidden=true;
         panel.setAttribute('aria-label','Chamber controls');
         panel.innerHTML='<div class="fx-heading"><span id="fx-room"></span></div>'+
-            '<div class="fx-bank fx-bank-left"></div><div class="fx-bank fx-bank-right"></div>'+
-            '<div class="fx-footer"><div class="fx-shapes" role="group" aria-label="FX slots"></div><p id="fx-hint" role="status"></p>'+
-            '<button type="button" data-action="clear">Clear shape FX</button><button type="button" data-action="slice">Randomize percussion slice</button></div>';
-        Object.entries(roomEffectNames).forEach(([type,label],i)=>{
-            const button=document.createElement('button');button.type='button';button.dataset.effect=type;button.textContent=label;
-            panel.querySelector(i<2?'.fx-bank-left':'.fx-bank-right').append(button);
-        });
-        for(const [shape,label] of Object.entries(roomFXShapes)) {
-            const button=document.createElement('button');button.type='button';button.dataset.shape=shape;button.textContent=label;
+            '<div class="fx-footer"><div class="fx-shapes" role="group" aria-label="Rerandomize FX volumes"></div>'+
+            '<p id="fx-hint" role="status"></p><button type="button" data-action="slice">Randomize percussion slice</button></div>';
+        for(const [shape,type] of Object.entries(fixedFX)) {
+            const button=document.createElement('button');button.type='button';button.dataset.shape=shape;
+            button.textContent=roomFXShapes[shape]+' · '+roomEffectNames[type];
+            button.title='Rerandomize '+roomFXShapes[shape];
             panel.querySelector('.fx-shapes').append(button);
         }
-        const request=(type,data={})=>{
-            if(isPresentation) lan.send({type,...data});
-            else handleChamberControl({type,...data});
-        };
         panel.addEventListener('click',event=>{
-            const button=event.target.closest('button');if(!button||button.disabled)return;
-            if(button.dataset.action==='slice') request('percussion-slice',{index:soloIndex});
-            else if(button.dataset.action==='clear') request('master-clear');
-            else if(button.dataset.shape) request('master-shape',{shape:button.dataset.shape});
-            else if(button.dataset.effect) request('master-effect',{effect:button.dataset.effect});
+            const button=event.target.closest('button');if(!button)return;
+            const data=button.dataset.shape?{type:'master-reroll',shape:button.dataset.shape}:{type:'percussion-slice',index:soloIndex};
+            if(isPresentation)lan.send(data);else handleChamberControl(data);
         });
-        const stage=document.getElementById('stage');stage.append(panel);this.panel=panel;
-
+        document.getElementById('stage').append(panel);this.panel=panel;
     },
     syncPanel() {
         if(!this.panel)return;
-        const view=isPresentation?this.viewMaster:null;
-        const focused=isPresentation?!!view?.focused:masterFocused;
-        const shape=(view||masterChamber).selectedShape || 'slice';
-        const effects=(view||masterChamber).effects;
-        const signature=JSON.stringify([soloIndex,focused,shape,effects]);
+        const focused=masterFocused;
+        const signature=JSON.stringify([soloIndex,focused]);
         if(signature===this.signature)return;this.signature=signature;
         this.panel.hidden=soloIndex<0&&!focused;
         if(this.panel.hidden)return;
-        this.panel.querySelector('#fx-room').textContent=focused?'FX · '+Object.values(effects).filter(Boolean).length+'/3':'Room '+String(soloIndex+1).padStart(2,'0');
-        this.panel.querySelectorAll('.fx-bank,.fx-shapes').forEach(el=>el.hidden=!focused);
+        this.panel.querySelector('#fx-room').textContent=focused?'FX':'Room '+String(soloIndex+1).padStart(2,'0');
+        this.panel.querySelector('.fx-shapes').hidden=!focused;
         this.panel.querySelector('[data-action="slice"]').hidden=focused;
-        const selected=effects[shape];
-        this.panel.querySelector('[data-action="clear"]').hidden=!focused||!selected;
-        for(const button of this.panel.querySelectorAll('[data-effect]')) {
-            const used=Object.entries(effects).some(([s,fx])=>s!==shape&&fx?.type===button.dataset.effect);
-            button.disabled=used||!!selected&&selected.type!==button.dataset.effect;
-            button.setAttribute('aria-pressed',String(selected?.type===button.dataset.effect));
-        }
-        for(const button of this.panel.querySelectorAll('[data-shape]')) {
-            button.setAttribute('aria-pressed',String(button.dataset.shape===shape));
-            const fx=effects[button.dataset.shape];
-            button.textContent=roomFXShapes[button.dataset.shape]+(fx?' · '+roomEffectNames[fx.type]:'');
-        }
         this.panel.querySelector('#fx-hint').textContent=focused
-            ? selected?'Tap '+roomEffectNames[selected.type]+' to reroll this volume':'Choose an FX for '+roomFXShapes[shape]+' · One FX per shape'
+            ?'Tap a volume or its label to randomize · Tap outside to return'
             :'Slice crossings trigger percussion · Tap below to reroll';
+    },
+    pickVolume(x,y) {
+        if(!playback.pickMatrix)return null;
+        const frame=playback.frames[0]?.master;if(!frame)return null;
+        const inverse=playback.pickMatrix.inverse();
+        const unproject=z=>{
+            const p=inverse.transformPoint({x:2*x/width-1,y:1-2*y/height,z,w:1});
+            return [p.x/p.w,p.y/p.w,p.z/p.w].map((value,i)=>value/(frame.bounds[['x','y','z'][i]]/2));
+        };
+        const start=unproject(-1),end=unproject(1),direction=end.map((value,i)=>value-start[i]);
+        const sub=(a,b)=>a.map((v,i)=>v-b[i]);
+        const dot=(a,b)=>a.reduce((sum,v,i)=>sum+v*b[i],0);
+        const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+        let closest=Infinity,result=null;
+        for(const [shape,fx] of Object.entries(frame.effects)) {
+            if(!validRoomFX(fx))continue;
+            for(const face of volumeFaces(fx,frame.bounds))for(let i=1;i<face.length-1;i++) {
+                const edge1=sub(face[i],face[0]),edge2=sub(face[i+1],face[0]),p=cross(direction,edge2),det=dot(edge1,p);
+                if(Math.abs(det)<1e-9)continue;
+                const t=sub(start,face[0]),u=dot(t,p)/det;if(u<0||u>1)continue;
+                const q=cross(t,edge1),v=dot(direction,q)/det;if(v<0||u+v>1)continue;
+                const hit=dot(edge2,q)/det;
+                if(hit>=0&&hit<=1&&hit<closest){closest=hit;result=shape;}
+            }
+        }
+        return result;
     },
     drawBarrier(index,fx,bounds,point,hue,opacity,time) {
         if(!validRoomFX(fx))return;
@@ -329,8 +315,6 @@ const roomFX = {
 
 function handleChamberControl(data) {
     if(data.type==='master-focus')focusMaster();
-    if(data.type==='master-effect')chooseMasterFX(data.effect);
-    if(data.type==='master-shape')changeMasterShape(data.shape);
-    if(data.type==='master-clear')clearMasterFX();
+    if(data.type==='master-reroll')rerollMasterFX(data.shape);
     if(data.type==='percussion-slice')reshufflePercussion(data.index);
 }

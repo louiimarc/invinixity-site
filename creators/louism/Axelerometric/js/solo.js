@@ -86,15 +86,16 @@ function setupSoloInputs() {
         tap=null;
         if(!e.isPrimary||e.button!==0||e.target.closest?.('.room-fx,header,.console,.join,dialog,button,input,select,a'))return;
         const focused=masterIsFocused()?-2:soloIndex>=0?soloIndex:null;
-        let index=-1;
+        let index=-1,shape=null;
         if(stage.contains(e.target)) {
             const rect=stage.getBoundingClientRect();
             index=pickRoom(e.clientX-rect.left,e.clientY-rect.top,focused);
+            if(focused===-2)shape=roomFX.pickVolume(e.clientX-rect.left,e.clientY-rect.top);
         } else if(focused===null&&spectrum.contains(e.target)) {
             const rect=spectrum.getBoundingClientRect();
             index=spectrumView.pick(e.clientX-rect.left,e.clientY-rect.top);
         }
-        tap={id:e.pointerId,x:e.clientX,y:e.clientY,index,focused};
+        tap={id:e.pointerId,x:e.clientX,y:e.clientY,index,focused,shape};
     });
     document.addEventListener('pointermove',e=>{
         if(tap&&Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>8)tap=null;
@@ -103,7 +104,9 @@ function setupSoloInputs() {
     document.addEventListener('pointerup',e=>{
         const current=tap;tap=null;
         if(!current||current.id!==e.pointerId||Math.hypot(e.clientX-current.x,e.clientY-current.y)>8)return;
-        if(current.focused!==null&&current.index!==current.focused)dismiss();
+        if(current.shape) {
+            if(isPresentation)lan.send({type:'master-reroll',shape:current.shape});else rerollMasterFX(current.shape);
+        } else if(current.focused!==null&&current.index!==current.focused)dismiss();
         else request(current.index);
     });
 }
