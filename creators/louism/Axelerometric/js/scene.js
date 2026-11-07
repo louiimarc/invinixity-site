@@ -60,7 +60,7 @@ const playback = {
             this.targets.push({i:-2,center:[0,0,0],size:[bounds.x,bounds.y,bounds.z]});
             for(const [shape,fx] of Object.entries(master.effects)) {
                 roomFX.drawBarrier('master-'+shape,fx,bounds,point,
-                    {slice:200,sphere:160,triangle:38}[shape],opacity,time);
+                    {slice:200,sphere:160,tetrahedron:38}[shape],opacity,time);
             }
             noFill();stroke(175,182,190,opacity*255);strokeWeight(masterFocused?2:1.2);
             box(bounds.x,bounds.y,bounds.z);drawFrontMarker(bounds.x,bounds.y,bounds.z);

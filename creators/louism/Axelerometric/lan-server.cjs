@@ -90,7 +90,7 @@ server.on('upgrade', (req, socket, head) => {
                     (msg.type==='percussion-slice' && Number.isInteger(msg.index) && msg.index===latest?.solo && msg.index>=0 && msg.index<latest.activeCount) ||
                     (latest?.master?.focused && (msg.type==='master-clear' ||
                         msg.type==='master-effect' && ['lowpass','highpass','bandpass','bitcrush','echo','stutter'].includes(msg.effect) ||
-                        msg.type==='master-shape' && ['slice','sphere','triangle'].includes(msg.shape)));
+                        msg.type==='master-shape' && ['slice','sphere','tetrahedron'].includes(msg.shape)));
                 if(allowed)host.send(JSON.stringify({type:msg.type,index:msg.index,effect:msg.effect,shape:msg.shape}));
             } else if (presenter && msg?.type === 'unsolo' && host?.readyState === WebSocket.OPEN) {
                 host.send(JSON.stringify({type:'unsolo'}));

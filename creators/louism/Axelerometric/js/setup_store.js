@@ -74,12 +74,13 @@ function restoreSetup() {
     if(state.master) {
         const used=new Set();
         for(const shape of Object.keys(roomFXShapes)) {
-            const stored=state.master.effects?.[shape];
-            const fx=stored?{...stored,type:({drive:'bitcrush',tremolo:'stutter'})[stored.type]||stored.type}:null;
+            const stored=state.master.effects?.[shape] || (shape==='tetrahedron'?state.master.effects?.triangle:null);
+            const fx=stored?{...stored,shape:stored.shape==='triangle'?'tetrahedron':stored.shape,type:({drive:'bitcrush',tremolo:'stutter'})[stored.type]||stored.type}:null;
             masterChamber.effects[shape]=validRoomFX(fx) && fx.shape===shape && !used.has(fx.type)?fx:null;
             if(masterChamber.effects[shape])used.add(fx.type);
         }
-        if(Object.hasOwn(roomFXShapes,state.master.selectedShape))masterChamber.selectedShape=state.master.selectedShape;
+        const selectedShape=state.master.selectedShape==='triangle'?'tetrahedron':state.master.selectedShape;
+        if(Object.hasOwn(roomFXShapes,selectedShape))masterChamber.selectedShape=selectedShape;
         if(validVector(state.master.position))masterChamber.sphere.position.set(...state.master.position);
         if(validVector(state.master.direction)&&Math.hypot(...state.master.direction)>0)masterChamber.sphere.direction.set(...state.master.direction).normalize();
         masterFocused=state.master.focused===true;

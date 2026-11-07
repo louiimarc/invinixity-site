@@ -3,7 +3,7 @@ const roomEffectNames = {
     bitcrush:'Bitcrush', echo:'Echo', stutter:'Stutter'
 };
 
-const roomFXShapes = {slice:'Slice', sphere:'Sphere', triangle:'Irregular triangle'};
+const roomFXShapes = {slice:'Slice', sphere:'Sphere', tetrahedron:'Tetrahedron'};
 const finiteVector = (v, length) => Array.isArray(v) && v.length === length && v.every(Number.isFinite);
 
 function validRoomFX(fx) {
@@ -17,19 +17,23 @@ function validRoomFX(fx) {
     if (!finiteVector(fx.center,3) || fx.center.some(v => Math.abs(v) > 0.3) ||
         !Number.isFinite(fx.radius) || fx.radius < 0.3 || fx.radius > 3) return false;
     if (shape === 'sphere') return true;
-    if (!Array.isArray(fx.triangle) || fx.triangle.length !== 3 ||
-        !fx.triangle.every(v => finiteVector(v,2) && v.every(x => Math.abs(x) <= 1))) return false;
-    return Math.abs(triangleArea(fx.triangle)) > 0.1;
+    return shape==='tetrahedron';
 }
 
-function triangleArea([a,b,c]) {
-    return (b[1]-c[1])*(a[0]-c[0]) + (c[0]-b[0])*(a[1]-c[1]);
+// Four equal-radius vertices form a regular tetrahedron centered at the origin.
+const tetrahedronVertices=[[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]]
+    .map(point=>point.map(value=>value/Math.sqrt(3)));
+
+function tetrahedronPoints(fx,bounds) {
+    const frame=roomFXFrame(fx,bounds);
+    return tetrahedronVertices.map(([x,y,z])=>frame.center.map((c,i)=>
+        c+frame.unit*fx.radius*(frame.u[i]*x+frame.v[i]*y+frame.n[i]*z)));
 }
 
 let masterFocused = false;
 const masterChamber = {
     bounds:{x:190,y:190,z:190}, sphere:null,
-    effects:{slice:null,sphere:null,triangle:null}, selectedShape:'slice'
+    effects:{slice:null,sphere:null,tetrahedron:null}, selectedShape:'slice'
 };
 
 function randomVolume(type, shape, previous) {
@@ -42,20 +46,11 @@ function randomVolume(type, shape, previous) {
         const contained=Math.random()<0.65;
         fx.radius = shape === 'sphere' ? (contained?0.4+Math.random()*0.3:0.9+Math.random()*0.95)
             : (contained?0.55+Math.random()*0.3:1.05+Math.random()*1.3);
-        if(shape==='triangle'&&contained)fx.thickness=0.3+Math.random()*0.5;
-        if(shape === 'triangle') {
-            const t=[[-0.7-Math.random()*0.15,-0.45],[0.8+Math.random()*0.15,-0.3],[-0.1,0.8+Math.random()*0.1]];
-            const c=[0,1].map(i=>t.reduce((sum,v)=>sum+v[i],0)/3);
-            fx.triangle=t.map(v=>v.map((x,i)=>x-c[i]));
-            if(contained) {
-                const frame=roomFXFrame(fx,{x:2,y:2,z:2});
-                const fit=Math.min(1,...[0,1,2].map(i=>{
-                    const extent=Math.max(...fx.triangle.map(([x,y])=>Math.abs(frame.u[i]*x*fx.radius+frame.v[i]*y*fx.radius)))+
-                        Math.abs(frame.n[i])*fx.thickness/2;
-                    return (0.95-Math.abs(fx.center[i]))/extent;
-                }));
-                fx.radius*=fit;fx.thickness*=fit;
-            }
+        if(shape==='tetrahedron'&&contained) {
+            const points=tetrahedronPoints({...fx,center:[0,0,0]},{x:2,y:2,z:2});
+            const fit=Math.min(1,...[0,1,2].map(i=>
+                (0.95-Math.abs(fx.center[i]))/Math.max(...points.map(point=>Math.abs(point[i])))));
+            fx.radius*=fit;
         }
     }
     return fx;
@@ -101,7 +96,7 @@ function focusMaster() {
     roomFX.syncPanel(); queueSetupSave();
 }
 
-// An orthonormal frame keeps the sphere round and the triangular prism's
+// An orthonormal frame keeps the sphere round and the tetrahedron's
 // rotated geometry identical in the renderer and the audio hit test.
 function roomFXFrame(fx, bounds) {
     const n = fx.normal;
@@ -128,12 +123,11 @@ function roomFXDepth(fx, point, bounds) {
         if (shape === 'sphere') depth = Math.max(0,1-Math.hypot(...local)/fx.radius);
         else {
             const dot = axis => local.reduce((sum,x,i) => sum+x*axis[i],0);
-            const x = dot(frame.u)/fx.radius, y = dot(frame.v)/fx.radius;
-            const [a,b,c] = fx.triangle, area = triangleArea(fx.triangle);
-            const first = ((b[1]-c[1])*(x-c[0])+(c[0]-b[0])*(y-c[1]))/area;
-            const second = ((c[1]-a[1])*(x-c[0])+(a[0]-c[0])*(y-c[1]))/area;
-            depth = Math.max(0, Math.min(1, 3*Math.min(first,second,1-first-second),
-                1-Math.abs(dot(frame.n))/(fx.thickness/2)));
+            const point=[dot(frame.u),dot(frame.v),dot(frame.n)].map(v=>v/fx.radius);
+            // Four barycentric face distances: zero on a face, one at the center.
+            const minimum=Math.min(...tetrahedronVertices.map(vertex=>
+                1+3*vertex.reduce((sum,v,i)=>sum+v*point[i],0)));
+            depth=Math.max(0,Math.min(1,minimum));
         }
     }
     return depth * depth * (3 - 2 * depth);
@@ -191,10 +185,8 @@ function volumeFaces(fx,bounds) {
             point(y*Math.PI/rows,x*2*Math.PI/columns),point((y+1)*Math.PI/rows,x*2*Math.PI/columns),
             point((y+1)*Math.PI/rows,(x+1)*2*Math.PI/columns),point(y*Math.PI/rows,(x+1)*2*Math.PI/columns)]);
     } else {
-        const ends=[-1,1].map(side=>fx.triangle.map(([x,y])=>normalized(frame.center.map((c,i)=>c+frame.unit*
-            (frame.u[i]*x*fx.radius+frame.v[i]*y*fx.radius+frame.n[i]*side*fx.thickness/2)))));
-        faces=[ends[0],ends[1]];
-        for(let i=0;i<3;i++) faces.push([ends[0][i],ends[0][(i+1)%3],ends[1][(i+1)%3],ends[1][i]]);
+        const points=tetrahedronPoints(fx,bounds).map(normalized);
+        faces=[[0,2,1],[0,1,3],[0,3,2],[1,2,3]].map(face=>face.map(i=>points[i]));
     }
     for(let axis=0;axis<3;axis++) for(const side of [-1,1]) {
         const normal=[0,0,0];normal[axis]=side;faces=clipSolid(faces,normal,1);

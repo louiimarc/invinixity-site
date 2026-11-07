@@ -55,7 +55,7 @@ class MasterFXBus {
     update(frame,at) {
         if(!frame)return;
         const when=this.context.currentTime+Math.max(0,(at-playback.now())/1000);
-        const shapes=['slice','sphere','triangle'];
+        const shapes=['slice','sphere','tetrahedron'];
         for(const chain of this.chains) chain.inserts.forEach((insert,i)=>{
             const fx=frame.effects[shapes[i]];
             insert.update(fx,roomFXDepth(fx,frame.p,frame.bounds),when,{bpm:frame.bpm||108,beat:frame.beat||0});
