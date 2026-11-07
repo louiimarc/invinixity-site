@@ -3,6 +3,8 @@ document.body.classList.toggle('silent-presentation',silentPresentation);
 let audioContext;
 let entered = false;
 let localOrbit = false;
+let localOrbitUntil=0,followControllerAt=0,lastCameraSent=-Infinity;
+const orbitPointers=new Set();
 let lastPacket = 0;
 let lastCount = 0;
 let remoteSound = false;
@@ -32,9 +34,24 @@ function setup() {
     roomFX.setup();
     setupSoloInputs();
     setupPercussionInputs();
-    stage.addEventListener('pointerdown', event => {
-        if (entered && event.pointerType === 'touch') localOrbit = true;
+    stage.addEventListener('pointerdown',event=>{
+        if(!entered||event.button!==0)return;
+        orbitPointers.add(event.pointerId);localOrbit=true;
     });
+    const release=event=>{
+        if(!orbitPointers.has(event.pointerId))return;
+        orbitPointers.delete(event.pointerId);
+        if(orbitPointers.size)return;
+        localOrbit=false;localOrbitUntil=performance.now()+250;followControllerAt=performance.now()+450;
+    };
+    document.addEventListener('pointerup',release);
+    document.addEventListener('pointercancel',release);
+    const stopOrbit=()=>{orbitPointers.clear();localOrbit=false;localOrbitUntil=0;followControllerAt=performance.now()+200;};
+    window.addEventListener('blur',stopOrbit);
+    document.addEventListener('visibilitychange',()=>{if(document.hidden)stopOrbit();});
+    stage.addEventListener('wheel',()=>{
+        if(!entered)return;localOrbitUntil=performance.now()+300;followControllerAt=performance.now()+500;
+    },{passive:true});
     new ResizeObserver(() => {
         if (width !== stage.clientWidth || height !== stage.clientHeight) resizeCanvas(stage.clientWidth, stage.clientHeight);
     }).observe(stage);
@@ -73,12 +90,12 @@ async function loadLocalFiles(files) {
 }
 
 function resetView(message) {
-    playback.frames.length = 0;
+    playback.frames.length = 0;tabletGestures.reset();tabletGestures.mirrorDial(null);
     applySolo(-1);
     roomFX.viewMaster=null;
     roomFX.syncPanel();
     spatialOutput.master.flush();
-    localOrbit = false;
+    localOrbit = false;orbitPointers.clear();localOrbitUntil=followControllerAt=0;
     spectrumView.draw([], 0, []);
     bassChamber.clear();
     bassSound.silence();
@@ -92,6 +109,7 @@ function resetView(message) {
 }
 
 function receive(packet) {
+    if(packet.type==='tempo-dial'){tabletGestures.mirrorDial(packet.dial);return;}
     if (packet.type === 'waiting') { resetView('Waiting for the controller…'); return; }
     if (packet.type !== 'frame') return;
     const {frame, notes} = packet;
@@ -127,7 +145,15 @@ function receive(packet) {
 function draw() {
     background(9, 15, 30);
     const view = playback.frames[0]?.camera;
-    if (localOrbit) orbitControl();
-    else if (view) camera(...view.slice(0, 6).map(v => v * height), ...view.slice(6));
+    const now=performance.now();
+    if(localOrbit||now<localOrbitUntil) {
+        orbitControl();
+        if(now-lastCameraSent>=33) {
+            lastCameraSent=now;
+            const pose=this._renderer._curCamera;
+            lan.send({type:'camera',view:[pose.eyeX,pose.eyeY,pose.eyeZ,pose.centerX,pose.centerY,pose.centerZ]
+                .map(value=>value/height).concat(pose.upX,pose.upY,pose.upZ)});
+        }
+    } else if(view&&now>=followControllerAt)camera(...view.slice(0,6).map(value=>value*height),...view.slice(6));
     playback.draw();
 }

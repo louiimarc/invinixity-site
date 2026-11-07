@@ -84,6 +84,18 @@ server.on('upgrade', (req, socket, head) => {
                     viewers.add(ws);
                     ws.send(JSON.stringify(latest ? {type:'frame',frame:latest,notes:pending.filter(n=>n.at>Date.now())} : {type:'waiting'}));
                 }
+            } else if(msg?.type==='tempo-dial' && (presenter || ws===host)) {
+                const dial=msg.dial;
+                const valid=dial===null || dial&&['x','y','size','rotation','bpm'].every(k=>Number.isFinite(dial[k]))&&
+                    dial.x>=-1&&dial.x<=2&&dial.y>=-1&&dial.y<=2&&dial.size>0&&dial.size<=4&&dial.bpm>=30&&dial.bpm<=300;
+                if(valid) {
+                    const packet=JSON.stringify({type:'tempo-dial',dial});
+                    if(presenter&&host?.readyState===WebSocket.OPEN)host.send(packet);
+                    else if(ws===host)for(const viewer of viewers)if(viewer.readyState===WebSocket.OPEN&&viewer.bufferedAmount<65536)viewer.send(packet);
+                }
+            } else if(presenter && msg?.type==='camera' && Array.isArray(msg.view) && msg.view.length===9 &&
+                msg.view.every(v=>Number.isFinite(v)&&Math.abs(v)<10000) && host?.readyState===WebSocket.OPEN) {
+                host.send(JSON.stringify({type:'camera',view:msg.view}));
             } else if(presenter && msg?.type==='room-motion' && ['room','circle'].includes(msg.mode) && host?.readyState===WebSocket.OPEN) {
                 host.send(JSON.stringify({type:'room-motion',mode:msg.mode}));
             } else if(presenter && msg?.type==='room-step' && [1,-1].includes(msg.delta) && host?.readyState===WebSocket.OPEN) {

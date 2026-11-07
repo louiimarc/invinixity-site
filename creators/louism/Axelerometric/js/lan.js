@@ -17,7 +17,7 @@ const lan = {
                     onPacket(packet);
                 } else if(packet.type==='join') {
                     this.channel.postMessage(this.latest?{...this.latest,relayOffset:this.offset}:{type:'waiting'});
-                } else if(['solo','unsolo','master-focus','master-reroll','percussion-slice','hat-step','motion','shake','tempo','room-step','room-motion'].includes(packet.type)) {
+                } else if(['solo','unsolo','master-focus','master-reroll','percussion-slice','hat-step','motion','shake','tempo','room-step','room-motion','tempo-dial','camera'].includes(packet.type)) {
                     onPacket(packet);
                 }
             };
@@ -60,9 +60,13 @@ const lan = {
         };
         open();
     },
+    validCamera(view) {
+        return Array.isArray(view)&&view.length===9&&view.every(v=>Number.isFinite(v)&&Math.abs(v)<10000)&&
+            Math.hypot(...view.slice(6))>0.1&&Math.hypot(...view.slice(0,3).map((v,i)=>v-view[i+3]))>0.0001;
+    },
     send(data) {
         if(data.type==='frame')this.latest=data;
-        if(this.channel && (isPresentation || data.type==='frame'))this.channel.postMessage({...data,relayOffset:this.offset});
+        if(this.channel && (isPresentation || ['frame','tempo-dial'].includes(data.type)))this.channel.postMessage({...data,relayOffset:this.offset});
         if (this.socket?.readyState === WebSocket.OPEN && this.socket.bufferedAmount < 65536)
             this.socket.send(JSON.stringify(data));
     }

@@ -11,6 +11,7 @@ const tabletGestures={
         this.overlay.setAttribute('role','status');this.overlay.setAttribute('aria-live','off');this.overlay.setAttribute('aria-label','Tempo dial');
         this.overlay.innerHTML='<div class="tempo-dial-ring"></div><div class="tempo-dial-value"><span></span><small>BPM</small></div>';
         document.body.append(this.overlay);
+        setInterval(()=>{if(this.dial?.active&&this.localDialMessage)this.publishDial(this.localDialMessage,true);},250);
         document.addEventListener('pointerdown',event=>this.down(event),true);
         document.addEventListener('pointermove',event=>this.move(event),true);
         document.addEventListener('pointerup',event=>this.up(event),true);
@@ -112,6 +113,33 @@ const tabletGestures={
         this.overlay.style.setProperty('--dial-angle',(dial?.rotation||0)+'deg');
         this.overlay.classList.toggle('is-adjusting',!!dial?.active);
         this.overlay.querySelector('span').textContent=String(dial?.value??Math.round(this.bpm()));
+        const rect=this.stage.getBoundingClientRect();
+        this.localDialMessage={x:(pair.x-rect.left)/rect.width,y:(pair.y-rect.top)/rect.height,
+            size:pair.distance/Math.min(rect.width,rect.height),rotation:dial.rotation,bpm:dial.value};
+        this.publishDial(this.localDialMessage);
+    },
+    publishDial(dial,force=false) {
+        const now=performance.now();
+        clearTimeout(this.dialPublishTimer);
+        if(dial&&!force&&now-(this.lastDialSent??-Infinity)<33){
+            this.dialPublishTimer=setTimeout(()=>this.publishDial(this.localDialMessage,true),33-(now-this.lastDialSent));return;
+        }
+        this.lastDialSent=now;lan.send({type:'tempo-dial',dial});
+    },
+    mirrorDial(dial) {
+        if(dial!==null&&(!dial||!['x','y','size','rotation','bpm'].every(key=>Number.isFinite(dial[key]))||
+            dial.x< -1||dial.x>2||dial.y< -1||dial.y>2||dial.size<=0||dial.size>4||dial.bpm<30||dial.bpm>300))return false;
+        if(this.dial?.active)return true;
+        clearTimeout(this.mirrorTimeout);
+        if(!dial){this.overlay.hidden=true;return true;}
+        const rect=this.stage.getBoundingClientRect(),size=Math.max(24,dial.size*Math.min(rect.width,rect.height));
+        Object.assign(this.overlay.style,{left:rect.left+dial.x*rect.width+'px',top:rect.top+dial.y*rect.height+'px',
+            width:size+'px',height:size+'px',fontSize:Math.max(12,Math.min(34,size/5))+'px'});
+        this.overlay.style.setProperty('--dial-angle',dial.rotation+'deg');
+        this.overlay.querySelector('span').textContent=String(dial.bpm);
+        this.overlay.classList.add('is-adjusting');this.overlay.hidden=false;
+        this.mirrorTimeout=setTimeout(()=>{if(!this.dial?.active)this.overlay.hidden=true;},1000);
+        return true;
     },
     sendTempo(force=false) {
         const dial=this.dial;if(!dial?.active)return;
@@ -125,7 +153,9 @@ const tabletGestures={
     },
     finishDial() {
         if(!this.dial)return;
-        this.sendTempo(true);this.dial=null;this.overlay.hidden=true;
+        this.sendTempo(true);
+        if(this.dial.active)this.publishDial(null,true);
+        this.localDialMessage=null;this.dial=null;this.overlay.hidden=true;
     },
     up(event) {
         if(!this.pointers.has(event.pointerId))return;
