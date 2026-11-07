@@ -1,7 +1,7 @@
 const isPresentation = document.body.classList.contains('present');
 const lan = {
     socket: null,
-    session:crypto.randomUUID(),
+    session:globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+'-'+Math.random().toString(36).slice(2),
     channel:null, latest:null, local:false,
     offset: 0,
     connect(onPacket, onLost) {
@@ -17,7 +17,7 @@ const lan = {
                     onPacket(packet);
                 } else if(packet.type==='join') {
                     this.channel.postMessage(this.latest?{...this.latest,relayOffset:this.offset}:{type:'waiting'});
-                } else if(['solo','unsolo','master-focus','master-effect','master-shape','master-clear','percussion-slice','hat-step'].includes(packet.type)) {
+                } else if(['solo','unsolo','master-focus','master-effect','master-shape','master-clear','percussion-slice','hat-step','motion','shake'].includes(packet.type)) {
                     onPacket(packet);
                 }
             };

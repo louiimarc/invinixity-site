@@ -138,17 +138,25 @@ function keyPressed(event) {
     if (event.target.closest('button')) return;
     switch (event.key.toLowerCase()) {
         case 'f': fullscreen(!fullscreen()); break;
-        case 'r':
-            for (const box of entity) {
-                box.degree = floor(random(activeScale.length));
-                box.sphere.hue = random(360);
-                box.sphere.direction = p5.Vector.random3D();
-            }
-            break;
+        case 'r': rerandomizeInstrument();break;
         case '-': case '_': setBoxCount(numberOfShownEntity - 1); break;
         case '=': case '+': setBoxCount(numberOfShownEntity + 1); break;
         default: return;
     }
     saveSetup();
     return false;
+}
+
+function rerandomizeInstrument() {
+    const now=performance.now();
+    if(now-(rerandomizeInstrument.lastAt??-Infinity)<1000)return;
+    rerandomizeInstrument.lastAt=now;
+    for(const box of entity) {
+        box.degree=floor(random(activeScale.length));box.sphere.hue=random(360);
+        box.sphere.direction=p5.Vector.random3D();box.slice=randomPercussionSlice();box.sliceHitAt=-1;
+    }
+    masterChamber.sphere.direction=p5.Vector.random3D();
+    masterChamber.effects=Object.fromEntries(Object.entries(masterChamber.effects)
+        .map(([shape,fx])=>[shape,fx?randomVolume(fx.type,shape,fx):null]));
+    roomFX.syncPanel();queueSetupSave();
 }

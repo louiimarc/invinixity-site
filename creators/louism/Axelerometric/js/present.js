@@ -39,6 +39,7 @@ function setup() {
     }).observe(stage);
 
     document.getElementById('enter').onclick = async () => {
+        if(matchMedia('(pointer: coarse)').matches)motionControl.enable();
         const root = document.documentElement;
         const resume = audioContext.resume();
         if (!document.fullscreenElement && root.requestFullscreen) root.requestFullscreen().catch(() => {});

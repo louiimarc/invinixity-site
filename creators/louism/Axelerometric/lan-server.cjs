@@ -84,12 +84,17 @@ server.on('upgrade', (req, socket, head) => {
                     viewers.add(ws);
                     ws.send(JSON.stringify(latest ? {type:'frame',frame:latest,notes:pending.filter(n=>n.at>Date.now())} : {type:'waiting'}));
                 }
+            } else if(presenter && msg?.type==='motion' && msg.tilt &&
+                [msg.tilt.lr,msg.tilt.fb].every(v=>Number.isFinite(v)&&v>=0&&v<=1) && host?.readyState===WebSocket.OPEN) {
+                host.send(JSON.stringify({type:'motion',tilt:{lr:msg.tilt.lr,fb:msg.tilt.fb}}));
+            } else if(presenter && msg?.type==='shake' && host?.readyState===WebSocket.OPEN) {
+                host.send(JSON.stringify({type:'shake'}));
             } else if(presenter && ['master-focus','master-effect','master-shape','master-clear','percussion-slice'].includes(msg?.type) &&
                 host?.readyState===WebSocket.OPEN) {
                 const allowed=msg.type==='master-focus' ||
                     (msg.type==='percussion-slice' && Number.isInteger(msg.index) && msg.index===latest?.solo && msg.index>=0 && msg.index<latest.activeCount) ||
                     (latest?.master?.focused && (msg.type==='master-clear' ||
-                        msg.type==='master-effect' && ['lowpass','highpass','bandpass','bitcrush','echo','stutter'].includes(msg.effect) ||
+                        msg.type==='master-effect' && ['bandpass','bitcrush','echo','stutter'].includes(msg.effect) ||
                         msg.type==='master-shape' && ['slice','sphere','tetrahedron'].includes(msg.shape)));
                 if(allowed)host.send(JSON.stringify({type:msg.type,index:msg.index,effect:msg.effect,shape:msg.shape}));
             } else if (presenter && msg?.type === 'unsolo' && host?.readyState === WebSocket.OPEN) {

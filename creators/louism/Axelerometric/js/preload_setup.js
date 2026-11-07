@@ -28,6 +28,7 @@ function setup() {
     outputLevel = new p5.Amplitude(0.7);
     spectrumView = new SpectrumView(entity[0].sound.analyser);
     setupControls();
+    motionControl.setup();
     roomFX.setup();
     setupSoloInputs();
     setupPercussionInputs();
@@ -42,6 +43,8 @@ function setup() {
             setHatDivision(hatPlane.division + data.delta);
             queueSetupSave();
         }
+        if(data.type==='motion')motionControl.receive(data.tilt);
+        if(data.type==='shake')rerandomizeInstrument();
         handleChamberControl(data);
         if (data.type === 'unsolo') releaseSolo();
         if (data.type === 'solo') toggleSolo(data.index);

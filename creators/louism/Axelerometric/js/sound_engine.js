@@ -48,7 +48,10 @@ class MasterFXBus {
                 const insert=new RoomFXInsert(this.context,node);insert.update(null,0);
                 inserts.push(insert);node=insert.output;
             }
-            node.connect(this.merger,0,i);this.chains.push({gain,inserts});
+            const highpass=this.context.createBiquadFilter();highpass.type='highpass';highpass.frequency.value=20;highpass.Q.value=0.707;
+            const lowpass=this.context.createBiquadFilter();lowpass.type='lowpass';lowpass.frequency.value=Math.min(20000,this.context.sampleRate*0.45);lowpass.Q.value=0.707;
+            node.connect(highpass);highpass.connect(lowpass);lowpass.connect(this.merger,0,i);
+            this.chains.push({gain,inserts,highpass,lowpass});
         }
         this.merger.connect(this.output);
     }
@@ -56,19 +59,26 @@ class MasterFXBus {
         if(!frame)return;
         const when=this.context.currentTime+Math.max(0,(at-playback.now())/1000);
         const shapes=['slice','sphere','tetrahedron'];
-        for(const chain of this.chains) chain.inserts.forEach((insert,i)=>{
-            const fx=frame.effects[shapes[i]];
-            insert.update(fx,roomFXDepth(fx,frame.p,frame.bounds),when,{bpm:frame.bpm||108,beat:frame.beat||0});
-        });
+        for(const chain of this.chains) {
+            chain.inserts.forEach((insert,i)=>{
+                const fx=frame.effects[shapes[i]];
+                insert.update(fx,roomFXDepth(fx,frame.p,frame.bounds),when,{bpm:frame.bpm||108,beat:frame.beat||0});
+            });
+            const lr=Math.max(0,Math.min(1,frame.tilt?.lr||0)),fb=Math.max(0,Math.min(1,frame.tilt?.fb||0));
+            const ceiling=Math.min(20000,this.context.sampleRate*0.45);
+            for(const [param,value] of [[chain.highpass.frequency,20*125**lr],[chain.lowpass.frequency,ceiling*(350/ceiling)**fb]]) {
+                param.cancelScheduledValues(when);param.setTargetAtTime(value,when,0.05);
+            }
+        }
     }
     flush() {
         this.input.disconnect();this.splitter.disconnect();this.merger.disconnect();
-        for(const chain of this.chains){chain.gain.disconnect();chain.inserts.forEach(insert=>insert.dispose());}
+        for(const chain of this.chains){chain.gain.disconnect();chain.highpass.disconnect();chain.lowpass.disconnect();chain.inserts.forEach(insert=>insert.dispose());}
         this.build();
     }
     dispose() {
         this.input.disconnect();this.splitter.disconnect();this.merger.disconnect();this.output.disconnect();
-        for(const chain of this.chains){chain.gain.disconnect();chain.inserts.forEach(insert=>insert.dispose());}
+        for(const chain of this.chains){chain.gain.disconnect();chain.highpass.disconnect();chain.lowpass.disconnect();chain.inserts.forEach(insert=>insert.dispose());}
     }
 }
 

@@ -1,5 +1,5 @@
 const roomEffectNames = {
-    lowpass:'Low-pass', highpass:'High-pass', bandpass:'Band-pass',
+    bandpass:'Band-pass',
     bitcrush:'Bitcrush', echo:'Echo', stutter:'Stutter'
 };
 
@@ -99,7 +99,7 @@ function clearMasterFX() {
 }
 
 function randomPercussionSlice() {
-    const slice=randomVolume('lowpass','slice');
+    const slice=randomVolume('bandpass','slice');
     slice.thickness=0.12; slice.offset=(Math.random()*2-1)*0.4;
     return slice;
 }
@@ -226,7 +226,7 @@ const roomFX = {
             '<button type="button" data-action="clear">Clear shape FX</button><button type="button" data-action="slice">Randomize percussion slice</button></div>';
         Object.entries(roomEffectNames).forEach(([type,label],i)=>{
             const button=document.createElement('button');button.type='button';button.dataset.effect=type;button.textContent=label;
-            panel.querySelector(i<3?'.fx-bank-left':'.fx-bank-right').append(button);
+            panel.querySelector(i<2?'.fx-bank-left':'.fx-bank-right').append(button);
         });
         for(const [shape,label] of Object.entries(roomFXShapes)) {
             const button=document.createElement('button');button.type='button';button.dataset.shape=shape;button.textContent=label;

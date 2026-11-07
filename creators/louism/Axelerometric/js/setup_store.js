@@ -61,7 +61,8 @@ function restoreSetup() {
     for (const [i, box] of entity.entries()) {
         const saved = state.chambers[i];
         if (!saved) continue;
-        box.slice=validRoomFX(saved.slice)?saved.slice:box.slice;
+        const savedSlice=saved.slice?{...saved.slice,type:'bandpass'}:null;
+        box.slice=validRoomFX(savedSlice)?savedSlice:box.slice;
         if (typeof saved.voice === 'string' && /^file:\d+:/.test(saved.voice)) {
             sampleOption(saved.voice, saved.voice.replace(/^file:\d+:/, ''));
             box.voice = saved.voice;

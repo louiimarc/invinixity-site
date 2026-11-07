@@ -69,7 +69,7 @@ function pumpSimulation() {
         advancePlane(frame);
         masterChamber.sphere.update(beats,masterChamber.bounds);
         frame.master={p:masterChamber.sphere.position.array(),bounds:masterChamber.bounds,
-            bpm:clock.bpm,beat:frame.bassBeat,effects:masterChamber.effects,selectedShape:masterChamber.selectedShape,focused:masterFocused};
+            bpm:clock.bpm,beat:frame.bassBeat,tilt:motionControl.snapshot(),effects:masterChamber.effects,selectedShape:masterChamber.selectedShape,focused:masterFocused};
         spatialOutput.master.update(frame.master,nextFrame);
         const beat = Math.ceil(frame.bassBeat);
         const delay = (beat - frame.bassBeat) * 60000 / clock.bpm;
