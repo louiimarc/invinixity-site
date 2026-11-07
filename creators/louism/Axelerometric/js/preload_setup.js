@@ -29,6 +29,7 @@ function setup() {
     spectrumView = new SpectrumView(entity[0].sound.analyser);
     setupControls();
     motionControl.setup();
+    tabletGestures.setup();
     roomFX.setup();
     setupSoloInputs();
     setupPercussionInputs();
@@ -43,6 +44,8 @@ function setup() {
             setHatDivision(hatPlane.division + data.delta);
             queueSetupSave();
         }
+        if(data.type==='room-step'&&[1,-1].includes(data.delta)){setBoxCount(numberOfShownEntity+data.delta);queueSetupSave();}
+        if(data.type==='tempo')setInstrumentTempo(data.bpm);
         if(data.type==='motion')motionControl.receive(data.tilt);
         if(data.type==='shake')rerandomizeInstrument();
         handleChamberControl(data);

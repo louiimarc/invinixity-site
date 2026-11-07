@@ -28,6 +28,7 @@ function setup() {
     bassSound = new SoundEngine(audioContext, audioContext.destination);
     for (let i = 0; i < numberOfEntity; i++) entity.push({sound:new SoundEngine(audioContext, audioContext.destination),percussion:new SoundEngine(audioContext, audioContext.destination)});
     spectrumView = new SpectrumView(entity[0].sound.analyser);
+    tabletGestures.setup();
     roomFX.setup();
     setupSoloInputs();
     setupPercussionInputs();

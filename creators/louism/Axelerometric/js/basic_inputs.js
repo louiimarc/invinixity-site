@@ -101,13 +101,7 @@ function setupControls() {
     for (const wave of ['sine','triangle','square','sawtooth']) {
         control('voice').add(new Option(wave[0].toUpperCase() + wave.slice(1), wave));
     }
-    control('tempo').onchange = event => {
-        const bpm = event.target.valueAsNumber;
-        if (Number.isFinite(bpm)) {
-            clock.setTempo(Math.max(30, Math.min(300, Math.round(bpm))), playback.now() / 1000);
-        }
-        event.target.value = clock.bpm;
-    };
+    control('tempo').onchange = event => setInstrumentTempo(event.target.valueAsNumber);
     control('room-motion').onchange = event => setRoomMotion(event.target.value);
     control('hat-division').onchange = event => setHatDivision(Number(event.target.value));
     control('grid').onchange = event => { hitGrid = Number(event.target.value); };
@@ -159,4 +153,9 @@ function rerandomizeInstrument() {
     masterChamber.effects=Object.fromEntries(Object.entries(masterChamber.effects)
         .map(([shape,fx])=>[shape,fx?randomVolume(fx.type,shape,fx):null]));
     roomFX.syncPanel();queueSetupSave();
+}
+
+function setInstrumentTempo(value) {
+    if(Number.isFinite(value))clock.setTempo(Math.max(30,Math.min(300,Math.round(value))),playback.now()/1000);
+    control('tempo').value=clock.bpm;queueSetupSave();
 }

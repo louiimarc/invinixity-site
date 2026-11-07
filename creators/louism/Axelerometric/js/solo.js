@@ -90,7 +90,7 @@ function setupSoloInputs() {
         if(stage.contains(e.target)) {
             const rect=stage.getBoundingClientRect();
             index=pickRoom(e.clientX-rect.left,e.clientY-rect.top,focused);
-            if(focused===-2)shape=roomFX.pickVolume(e.clientX-rect.left,e.clientY-rect.top);
+            if(focused===-2&&!(tabletGestures.isTablet&&e.pointerType==='touch'))shape=roomFX.pickVolume(e.clientX-rect.left,e.clientY-rect.top);
         } else if(focused===null&&spectrum.contains(e.target)) {
             const rect=spectrum.getBoundingClientRect();
             index=spectrumView.pick(e.clientX-rect.left,e.clientY-rect.top);
@@ -104,9 +104,15 @@ function setupSoloInputs() {
     document.addEventListener('pointerup',e=>{
         const current=tap;tap=null;
         if(!current||current.id!==e.pointerId||Math.hypot(e.clientX-current.x,e.clientY-current.y)>8)return;
-        if(current.shape) {
-            if(isPresentation)lan.send({type:'master-reroll',shape:current.shape});else rerollMasterFX(current.shape);
-        } else if(current.focused!==null&&current.index!==current.focused)dismiss();
-        else request(current.index);
+        const action=()=>{
+            if(current.shape) {
+                if(isPresentation)lan.send({type:'master-reroll',shape:current.shape});else rerollMasterFX(current.shape);
+            } else if(current.focused!==null&&current.index!==current.focused)dismiss();
+            else request(current.index);
+        };
+        if(tabletGestures.isTablet&&e.pointerType==='touch'&&current.focused===-2&&current.index===-2) {
+            // Tablet FX use double-tap chords; a single touch inside stays focused.
+            return;
+        } else action();
     });
 }
